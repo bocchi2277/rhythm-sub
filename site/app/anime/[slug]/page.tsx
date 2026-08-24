@@ -114,13 +114,13 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           style={{ backgroundImage: `url('${encodeURI(img(s.cover))}')` }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-bg/50" />
-        <div className="relative max-w-7xl mx-auto px-4 pt-8 pb-6 grid md:grid-cols-[240px_1fr] gap-6 items-start fade-up">
-          <div className="mx-auto md:mx-0 w-[220px] aspect-[2/3] rounded-2xl overflow-hidden border border-edge shadow-[0_20px_50px_rgba(0,0,0,.55)]">
+        <div className="relative max-w-7xl mx-auto px-4 pt-6 md:pt-8 pb-6 grid md:grid-cols-[240px_1fr] gap-5 md:gap-6 items-start fade-up">
+          <div className="mx-auto md:mx-0 w-[150px] md:w-[220px] aspect-[2/3] rounded-2xl overflow-hidden border border-edge shadow-[0_20px_50px_rgba(0,0,0,.55)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={img(s.cover)} alt={s.title} className="w-full h-full object-cover" />
           </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="text-center md:text-start">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-3">
               {s.type?.text && (
                 <span className="text-xs font-bold px-3 py-1 rounded-lg btn-accent">{s.type.text}</span>
               )}
@@ -141,20 +141,20 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
                 </span>
               )}
             </div>
-            <h1 className="text-2xl md:text-4xl font-bold leading-tight">{s.title}</h1>
+            <h1 className="text-xl sm:text-2xl md:text-4xl font-bold leading-tight">{s.title}</h1>
             {s.altTitles && s.altTitles.length > 0 && (
-              <p dir="ltr" className="mt-1.5 text-sm text-muted text-end line-clamp-1">
+              <p dir="ltr" className="mt-1.5 text-xs sm:text-sm text-muted line-clamp-1 md:text-end">
                 {s.altTitles.join(' • ')}
               </p>
             )}
-            <div className="mt-4 grid sm:grid-cols-2 gap-x-8 gap-y-2 max-w-2xl">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5 max-w-2xl md:max-w-none w-fit mx-auto md:mx-0 text-sm">
               <Meta label="استوديو" value={s.studio} />
               <Meta label="سنة الإصدار" value={s.year} />
               <Meta label="الموسم" value={s.season?.text} />
               <Meta label="عدد الحلقات" value={s.episodesCount} />
             </div>
             {s.genres.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-2">
                 {s.genres.map((g) => (
                   <Link
                     key={g}
@@ -216,7 +216,7 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           )}
           {related.length > 0 && (
             <div className="bg-card border border-edge rounded-2xl p-5">
-              <h3 className="font-bold mb-3">أعمال ذات صلة</h3>
+              <h3 className="font-bold mb-3">مواضيع ذات صلة</h3>
               <div className="space-y-2">
                 {related.map(
                   (r) =>

@@ -9,6 +9,21 @@ function normalizeSlug(slug) {
     .replace(/-\d{1,4}(?:-\d{1,2})?$/, '');
 }
 
+function asciiSlug(raw) {
+  let s = raw;
+  try {
+    s = decodeURIComponent(raw);
+  } catch {}
+  s = s
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return s || 'anime';
+}
+
 function episodeNumberFrom(post) {
   const m1 = post.slug.match(/(?:^|-)(?:episode|ep)-?(\d{1,4})$/i);
   if (m1) return parseInt(m1[1], 10);
@@ -72,7 +87,7 @@ function main() {
       }
     }
 
-    let slug = normalizeSlug(newest.slug);
+    let slug = asciiSlug(normalizeSlug(newest.slug));
     if (usedSlugs.has(slug)) {
       if (newest.year && !usedSlugs.has(`${slug}-${newest.year}`)) slug = `${slug}-${newest.year}`;
       else {
@@ -114,7 +129,7 @@ function main() {
     const guideUrls = [...new Set(uniq.flatMap((p) => (p.seriesGuide ?? []).map((g) => g.url)))];
 
     const series = {
-      key: newest.malUrl ? `mal:${newest.malUrl}` : `slug:${normalizeSlug(newest.slug)}`,
+      key: newest.malUrl ? `mal:${newest.malUrl}` : `slug:${asciiSlug(normalizeSlug(newest.slug))}`,
       malUrl: pickLatest(uniq, (p) => p.malUrl),
       slug,
       title: (newest.title ?? '').replace(/\s*[-–]\s*\d{1,4}\s*$/, '').trim() || newest.title,
@@ -137,13 +152,25 @@ function main() {
     };
 
     seriesList.push(series);
-    for (const p of uniq) slugIndex.set(p.slug, series.key);
+    for (const p of uniq) slugIndex.set(asciiSlug(normalizeSlug(p.slug)), series.key);
+  }
+
+  const familyMap = new Map();
+  for (const s of seriesList) {
+    const token = s.slug.split('-')[0];
+    if (token.length >= 4) {
+      if (!familyMap.has(token)) familyMap.set(token, []);
+      familyMap.get(token).push(s.key);
+    }
   }
 
   for (const s of seriesList) {
-    s.relatedSeries = [...new Set(s.seriesGuideUrls.map((u) => u.replace(/\/+$/, '').split('/').pop()).filter(Boolean))]
-      .map((sl) => slugIndex.get(normalizeSlug(sl)))
+    const fromGuides = [...new Set(s.seriesGuideUrls.map((u) => u.replace(/\/+$/, '').split('/').pop()).filter(Boolean))]
+      .map((sl) => slugIndex.get(asciiSlug(normalizeSlug(sl))))
       .filter((k) => k && k !== s.key);
+    const token = s.slug.split('-')[0];
+    const family = token.length >= 4 ? (familyMap.get(token) ?? []).filter((k) => k !== s.key) : [];
+    s.relatedSeries = [...new Set([...fromGuides, ...family])].slice(0, 8);
     delete s.seriesGuideUrls;
   }
 

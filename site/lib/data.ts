@@ -10,6 +10,7 @@ export type Episode = {
   date: string | null;
   rating: number | null;
   cover: string | null;
+  cardImage?: string | null;
   synopsis: string;
   trailerYoutubeId: string | null;
   qualities: Quality[];
@@ -65,7 +66,11 @@ const raw: Series[] = loadJson('series.json');
 const merged = [...raw];
 
 for (const s of merged) {
-  for (const e of s.episodes) e.contentImages = e.contentImages ?? [];
+  for (const e of s.episodes) {
+    e.contentImages = e.contentImages ?? [];
+    const distinct = e.contentImages.find((u) => u && u !== e.cover);
+    e.cardImage = distinct ?? e.cover ?? null;
+  }
 }
 
 let teamReleases: Record<string, unknown>[] = [];
@@ -142,6 +147,28 @@ for (const r of teamReleases) {
 
 export const allSeries: Series[] = merged;
 
+function asciiSlug(raw: string): string {
+  let s = raw;
+  try {
+    s = decodeURIComponent(raw);
+  } catch {}
+  s = s
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return s || 'anime';
+}
+
+function normalizeSlug(slug: string): string {
+  return slug
+    .replace(/-(?:episode|ep)-?\d{1,4}$/i, '')
+    .replace(/-\d{1,4}$/, '')
+    .replace(/-\d{1,4}(?:-\d{1,2})?$/, '');
+}
+
 export type SitePage = {
   key: string;
   url: string;
@@ -154,6 +181,8 @@ type FooterData = { footerHtml: string; socials: { name: string; url: string }[]
 
 let sitePages: Record<string, SitePage> = {};
 let footerData: FooterData = { footerHtml: '', socials: [] };
+let curatedProjectSlugs: string[] = [];
+let siteSocials: { href: string; label: string }[] = [];
 try {
   const pagesDir = path.join(process.cwd(), '..', 'data', 'pages');
   for (const f of fs.readdirSync(pagesDir).filter((x) => x.endsWith('.json') && !x.startsWith('_'))) {
@@ -161,6 +190,11 @@ try {
     sitePages[p.key] = { ...p, images: (p.images ?? []).map((u: string) => img(u)) };
   }
   footerData = JSON.parse(fs.readFileSync(path.join(pagesDir, '_footer.json'), 'utf8'));
+  const extras = JSON.parse(fs.readFileSync(path.join(pagesDir, '_home_extras.json'), 'utf8'));
+  siteSocials = extras.socials ?? [];
+  curatedProjectSlugs = (extras.projectPostUrls ?? [])
+    .map((u: string) => asciiSlug(normalizeSlug(new URL(u).pathname.split('/').pop() ?? '')))
+    .filter(Boolean);
 } catch {}
 
 export function sitePage(key: string): SitePage | null {
@@ -175,13 +209,16 @@ export function mappedHtml(html: string): string {
 }
 
 export const footer = footerData;
+export const socials = siteSocials;
 
-const THIRTY_DAYS = 30 * 24 * 3600 * 1000;
+const bySlugMap = new Map(allSeries.map((s) => [s.slug, s]));
 
-export const currentProjects = allSeries
-  .filter((s) => /ongoing/i.test(s.status ?? ''))
-  .filter((s) => s.lastReleaseAt && Date.now() - new Date(s.lastReleaseAt).getTime() < THIRTY_DAYS)
-  .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
+export const currentProjects = curatedProjectSlugs.length
+  ? curatedProjectSlugs.map((sl) => bySlugMap.get(sl)).filter(Boolean) as Series[]
+  : allSeries
+      .filter((s) => /ongoing/i.test(s.status ?? ''))
+      .filter((s) => s.lastReleaseAt && Date.now() - new Date(s.lastReleaseAt).getTime() < 30 * 24 * 3600 * 1000)
+      .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
 
 export const latestReleases = allSeries
   .flatMap((s) => s.episodes.map((e) => ({ series: s, ep: e })))
