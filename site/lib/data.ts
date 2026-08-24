@@ -187,7 +187,8 @@ try {
   const pagesDir = path.join(process.cwd(), '..', 'data', 'pages');
   for (const f of fs.readdirSync(pagesDir).filter((x) => x.endsWith('.json') && !x.startsWith('_'))) {
     const p = JSON.parse(fs.readFileSync(path.join(pagesDir, f), 'utf8'));
-    sitePages[p.key] = { ...p, images: (p.images ?? []).map((u: string) => img(u)) };
+    const key = p.key ?? f.replace(/\.json$/, '');
+    sitePages[key] = { ...p, key, images: (p.images ?? []).map((u: string) => img(u)) };
   }
   footerData = JSON.parse(fs.readFileSync(path.join(pagesDir, '_footer.json'), 'utf8'));
   const extras = JSON.parse(fs.readFileSync(path.join(pagesDir, '_home_extras.json'), 'utf8'));

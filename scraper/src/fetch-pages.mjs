@@ -15,7 +15,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
 await ensureSession();
 
-function extract(url, html) {
+function extract(key, url, html) {
   const $ = cheerio.load(html);
   const $content = $('.bixbox .page').first().length ? $('.bixbox .page').first() : $('.entry-content').first();
   const contentHtml = $content.html()?.trim() ?? '';
@@ -34,7 +34,7 @@ function extract(url, html) {
 
   const title = ($('h1').first().text() || $('title').first().text() || '').replace(/\s*–\s*Rhythm-Sub\s*$/, '').trim();
 
-  return { url, title, contentHtml, images, footerHtml, socials };
+  return { key, url, title, contentHtml, images, footerHtml, socials };
 }
 
 const results = {};
@@ -44,7 +44,7 @@ for (const p of PAGES) {
     console.error(`FAIL ${p.key}: HTTP ${status}`);
     process.exit(1);
   }
-  const data = extract(p.url, html);
+  const data = extract(p.key, p.url, html);
   results[p.key] = data;
   fs.writeFileSync(path.join(OUT, `${p.key}.json`), JSON.stringify(data, null, 2));
   console.log(`ok ${p.key}: "${data.title}" | html:${data.contentHtml.length}ch | imgs:${data.images.length} | socials:${data.socials.length}`);
