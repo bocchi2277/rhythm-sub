@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { allSeries, bySlug, img } from '@/lib/data';
 import type { Episode } from '@/lib/data';
+import AnimeCard from '@/components/AnimeCard';
 
 export function generateStaticParams() {
   return allSeries.map((s) => ({ slug: s.slug }));
@@ -36,8 +37,8 @@ function DownloadRow({ ep }: { ep: Episode }) {
   return (
     <details className="group bg-panel border border-edge rounded-2xl overflow-hidden open:border-accent/40 transition-colors">
       <summary className="flex items-center gap-3 p-4 cursor-pointer select-none list-none hover:bg-card transition-colors">
-        <span className="btn-accent w-11 h-11 rounded-xl grid place-items-center font-bold text-lg shrink-0">
-          {ep.number ?? '★'}
+        <span className="btn-accent w-11 h-11 rounded-xl grid place-items-center font-bold text-sm shrink-0 px-1">
+          {ep.displayNum ?? '★'}
         </span>
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-bold truncate">{ep.label || `الحلقة ${ep.number}`}</h4>
@@ -114,13 +115,13 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           style={{ backgroundImage: `url('${encodeURI(img(s.cover))}')` }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-bg/50" />
-        <div className="relative max-w-7xl mx-auto px-4 pt-6 md:pt-8 pb-6 grid md:grid-cols-[240px_1fr] gap-5 md:gap-6 items-start fade-up">
-          <div className="mx-auto md:mx-0 w-[150px] md:w-[220px] aspect-[2/3] rounded-2xl overflow-hidden border border-edge shadow-[0_20px_50px_rgba(0,0,0,.55)]">
+        <div className="relative max-w-7xl mx-auto px-4 pt-6 md:pt-8 pb-6 grid lg:grid-cols-[240px_1fr] gap-5 lg:gap-6 items-start fade-up">
+          <div className="mx-auto md:mx-0 w-[150px] lg:w-[220px] aspect-[2/3] rounded-2xl overflow-hidden border border-edge shadow-[0_20px_50px_rgba(0,0,0,.55)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={img(s.cover)} alt={s.title} className="w-full h-full object-cover" />
           </div>
-          <div className="text-center md:text-start">
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-3">
+          <div className="text-center lg:text-start">
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 mb-3">
               {s.type?.text && (
                 <span className="text-xs font-bold px-3 py-1 rounded-lg btn-accent">{s.type.text}</span>
               )}
@@ -143,18 +144,18 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
             </div>
             <h1 className="text-xl sm:text-2xl md:text-4xl font-bold leading-tight">{s.title}</h1>
             {s.altTitles && s.altTitles.length > 0 && (
-              <p dir="ltr" className="mt-1.5 text-xs sm:text-sm text-muted line-clamp-1 md:text-end">
+              <p dir="ltr" className="mt-1.5 text-xs sm:text-sm text-muted line-clamp-1 lg:text-end">
                 {s.altTitles.join(' • ')}
               </p>
             )}
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5 max-w-2xl md:max-w-none w-fit mx-auto md:mx-0 text-sm">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5 max-w-2xl lg:max-w-none w-fit mx-auto md:mx-0 text-sm">
               <Meta label="استوديو" value={s.studio} />
               <Meta label="سنة الإصدار" value={s.year} />
               <Meta label="الموسم" value={s.season?.text} />
               <Meta label="عدد الحلقات" value={s.episodesCount} />
             </div>
             {s.genres.length > 0 && (
-              <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-2">
+              <div className="mt-4 flex flex-wrap justify-center lg:justify-start gap-2">
                 {s.genres.map((g) => (
                   <Link
                     key={g}
@@ -203,10 +204,10 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           )}
           {Object.keys(s.staff).length > 0 && (
             <div className="bg-card border border-edge rounded-2xl p-5">
-              <h3 className="font-bold mb-3">العاملون على المشروع</h3>
-              <dl dir="ltr" className="space-y-1.5 text-sm text-left">
+              <h3 className="font-bold mb-3 text-center lg:text-start">العاملون على المشروع</h3>
+              <dl dir="ltr" className="text-sm text-left w-fit mx-auto lg:mx-0 lg:w-full">
                 {Object.entries(s.staff).map(([role, names]) => (
-                  <div key={role} className="flex gap-3">
+                  <div key={role} className="flex gap-3 py-2 border-b border-edge/50 last:border-0">
                     <dt className="text-accent shrink-0 w-24 font-medium">{role}</dt>
                     <dd className="text-muted" dir="auto">{names.join('، ')}</dd>
                   </div>
@@ -217,13 +218,11 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           {related.length > 0 && (
             <div className="bg-card border border-edge rounded-2xl p-5">
               <h3 className="font-bold mb-3">مواضيع ذات صلة</h3>
-              <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-3">
                 {related.map(
                   (r) =>
                     r && (
-                      <Link key={r.key} href={`/anime/${r.slug}/`} className="block text-sm hover:text-accent transition-colors">
-                        ← {r.title}
-                      </Link>
+                      <AnimeCard key={r.key} series={r} />
                     )
                 )}
               </div>

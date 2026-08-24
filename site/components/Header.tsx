@@ -7,8 +7,12 @@ const NAV = [
   { href: '/', label: 'الرئيسية' },
   { href: '/list', label: 'قائمة الأنمي' },
   { href: '/schedule', label: 'جدول الحلقات' },
-  { href: '/advanced-search', label: 'البحث المتقدم' },
-  { href: '/about', label: 'من نحن' }
+  { href: '/advanced-search', label: 'البحث المتقدم' }
+];
+
+const ABOUT_LINKS = [
+  { href: '/about', label: 'من نحن' },
+  { href: '/support', label: 'الدعم الفني' }
 ];
 
 export function Logo({ size = 'h-10' }: { size?: string }) {
@@ -51,12 +55,29 @@ export default function Header() {
               {n.label}
             </Link>
           ))}
+          <div className="relative group">
+            <button className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap flex items-center gap-1">
+              عن الفريق
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <div className="absolute top-full start-0 pt-1 opacity-0 invisible translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200">
+              <div className="glass border border-edge rounded-2xl p-1.5 min-w-[150px] shadow-2xl">
+                {ABOUT_LINKS.map((n) => (
+                  <Link key={n.href} href={n.href} className="block px-3 py-2 rounded-xl text-sm hover:bg-card hover:text-accent transition-colors whitespace-nowrap">
+                    {n.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
           <Link href="/random" className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap">
             فاجئني 🎲
           </Link>
         </nav>
-        <div className="ms-auto flex items-center gap-2 w-full max-w-[220px] lg:max-w-[280px]">
-          <SearchForm className="hidden sm:block flex-1" />
+        <div className="ms-auto hidden lg:flex items-center gap-2 w-full max-w-[280px]">
+          <SearchForm className="flex-1" />
           <a href="https://rhythm-sub.com/wp-login.php" className="btn-accent text-sm font-medium px-4 py-2 rounded-xl whitespace-nowrap">
             تسجيل الدخول
           </a>
@@ -93,14 +114,8 @@ export default function Header() {
         }`}
       >
         <div className="px-4 py-3 space-y-1 glass">
-          <SearchForm className="sm:hidden pb-2" />
-          <a
-            href="https://rhythm-sub.com/wp-login.php"
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold btn-accent sm:hidden"
-          >
-            تسجيل الدخول
-          </a>
-          {[...NAV, { href: '/random', label: 'فاجئني 🎲' }, { href: '/support', label: 'الدعم الفني' }].map((n) => (
+          <SearchForm className="pb-2" />
+          {[...NAV, { href: '/about', label: 'من نحن' }, { href: '/random', label: 'فاجئني 🎲' }, { href: '/support', label: 'الدعم الفني' }].map((n) => (
             <Link
               key={n.href}
               href={n.href}
@@ -110,6 +125,12 @@ export default function Header() {
               {n.label}
             </Link>
           ))}
+          <a
+            href="https://rhythm-sub.com/wp-login.php"
+            className="block text-center px-3 py-2.5 rounded-xl text-sm font-bold btn-accent mt-2"
+          >
+            تسجيل الدخول
+          </a>
         </div>
       </div>
     </header>

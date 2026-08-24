@@ -30,13 +30,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Header />
         <main>{children}</main>
         <footer className="border-t border-edge mt-16">
-          <div className="max-w-7xl mx-auto px-4 py-10 grid md:grid-cols-3 gap-8 text-sm">
-            <div>
+          <div className="max-w-7xl mx-auto px-4 py-10 grid grid-cols-2 md:grid-cols-3 gap-8 text-sm">
+            <div className="col-span-2 md:col-span-1 flex flex-col items-center md:items-start text-center md:text-start">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo.png" alt="Rhythm-Sub" className="h-24 w-auto" />
-              <p className="text-muted mt-3 leading-relaxed text-xs">
-                فرقة ترجمة أنمي عربية — تأسست عام 2012، وانطلق موقعها عام 2020.
-              </p>
               {socials.length > 0 && (
                 <div className="flex items-center gap-2 mt-4">
                   {socials.map((s) => (
@@ -77,12 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="border-t border-edge py-5 px-4 text-center text-xs text-muted space-y-2">
             <p>جميع حقوق النشر محفوظة لـ Rhythm-Sub © 2020</p>
             <p className="text-[11px] opacity-80">تنويه: هذا الموقع لا يخزن أية ملفات على الخادم. جميع المحتويات يتم توفيرها من قبل أطرافٍ ثالثة غير تابعة.</p>
-            <p className="text-[11px]">
-              بكل فخر{' '}
-              <a href="http://maz-software.com/" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                Rhythm-sub || Abdulla Sensei || MAZ-Software
-              </a>
-            </p>
+            <p className="text-[11px]">بكل فخر Rhythm-sub || Ox Alpha</p>
           </div>
         </footer>
       </body>

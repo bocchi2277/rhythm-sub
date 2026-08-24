@@ -1,6 +1,7 @@
 ﻿import Link from 'next/link';
 import { latestReleases, currentProjects, allSeries, img } from '@/lib/data';
 import AnimeCard from '@/components/AnimeCard';
+import EpisodeCard from '@/components/EpisodeCard';
 
 function SectionTitle({ title, href }: { title: string; href?: string }) {
   return (
@@ -20,7 +21,7 @@ function SectionTitle({ title, href }: { title: string; href?: string }) {
 
 export default function Home() {
   const featured = latestReleases[0]?.series;
-  const recent = latestReleases.slice(0, 30);
+  const recent = latestReleases.slice(0, 9);
   const topRated = [...allSeries]
     .filter((s) => s.rating != null)
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
@@ -71,15 +72,10 @@ export default function Home() {
       )}
 
       <section className="mt-10">
-        <SectionTitle title="أحدث الإصدارات" href="/list/" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <SectionTitle title="آخر الحلقات" href="/list/" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {recent.map(({ series, ep }, i) => (
-            <AnimeCard
-              key={`${ep.slug}-${i}`}
-              series={series}
-              imageOverride={ep.cardImage ?? ep.cover}
-              badge={ep.number != null ? `الحلقة ${ep.number}` : ep.label || undefined}
-            />
+            <EpisodeCard key={`${ep.slug}-${i}`} series={series} ep={ep} />
           ))}
         </div>
       </section>
@@ -117,20 +113,39 @@ export default function Home() {
         </aside>
       </section>
 
-      <section className="mt-14 glass border border-edge rounded-3xl p-8 text-center fade-up">
-        <h2 className="text-2xl font-bold">تبحث عن أنمي معين؟</h2>
-        <p className="text-muted mt-2 text-sm">تصفح مكتبتنا كاملة أو استخدم البحث المتقدم بالفلاتر</p>
-        <div className="mt-5 flex justify-center gap-3 flex-wrap">
-          <Link href="/list/" className="btn-accent px-6 py-3 rounded-xl text-sm font-bold">
-            قائمة الأنمي
-          </Link>
-          <Link
-            href="/advanced-search/"
-            className="px-6 py-3 rounded-xl text-sm font-bold border border-edge hover:border-accent transition-colors"
-          >
-            بحث متقدم
-          </Link>
-        </div>
+      <section className="mt-14 grid sm:grid-cols-2 gap-4 fade-up">
+        <a
+          href="https://www.paypal.me/shahabalbalushi1995"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="card-hover group relative block rounded-3xl overflow-hidden border border-edge min-h-[150px]"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/banners/sponsor.jpg"
+            alt="كن راعيًا لنا"
+            loading="lazy"
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+          <span className="absolute bottom-3 end-3 text-xs font-bold px-3 py-1.5 rounded-xl glass border border-edge">
+            ادعمنا عبر PayPal ←
+          </span>
+        </a>
+        <Link
+          href="/support/"
+          className="card-hover group relative block rounded-3xl overflow-hidden border border-edge min-h-[150px]"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/banners/tech-support.jpg"
+            alt="الدعم الفني"
+            loading="lazy"
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+          <span className="absolute bottom-3 end-3 text-xs font-bold px-3 py-1.5 rounded-xl glass border border-edge">
+            تواصل معنا ←
+          </span>
+        </Link>
       </section>
     </div>
   );

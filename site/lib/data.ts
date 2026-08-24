@@ -11,6 +11,7 @@ export type Episode = {
   rating: number | null;
   cover: string | null;
   cardImage?: string | null;
+  displayNum?: string | null;
   synopsis: string;
   trailerYoutubeId: string | null;
   qualities: Quality[];
@@ -65,11 +66,20 @@ const raw: Series[] = loadJson('series.json');
 
 const merged = [...raw];
 
+function displayNumber(ep: { label: string; number: number | null; slug: string }): string | null {
+  const range = ep.label.match(/(\d{1,4})\s*[~\-]\s*(\d{1,4})(?!\d)/);
+  if (range && /~/.test(ep.label)) return `${parseInt(range[1], 10)}~${parseInt(range[2], 10)}`;
+  const inLabel = ep.label.match(/(?:-|\s|#|الحلقة\s)(\d{1,4})(?!\d)\s*(?:END|الأخيرة)?\s*$/i);
+  if (inLabel) return String(parseInt(inLabel[1], 10));
+  return ep.number != null ? String(ep.number) : null;
+}
+
 for (const s of merged) {
   for (const e of s.episodes) {
     e.contentImages = e.contentImages ?? [];
     const distinct = e.contentImages.find((u) => u && u !== e.cover);
     e.cardImage = distinct ?? e.cover ?? null;
+    e.displayNum = displayNumber(e);
   }
 }
 

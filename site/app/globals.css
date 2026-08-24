@@ -64,6 +64,7 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: clip;
 }
 
 body {
@@ -73,6 +74,7 @@ body {
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(41, 168, 224, 0.08), transparent),
     radial-gradient(circle at 85% 110%, rgba(41, 168, 224, 0.05), transparent 40%);
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 ::selection {
@@ -117,8 +119,9 @@ body {
 .no-scrollbar::-webkit-scrollbar { height: 6px; }
 .no-scrollbar::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 3px; }
 
-.prose-rtl img { max-width: 100%; height: auto; border-radius: 12px; margin-inline: auto; }
-.prose-rtl p { margin-bottom: .75rem; line-height: 2; }
+.prose-rtl img { display: inline-block; max-width: min(100%, 300px); height: auto; border-radius: 12px; margin: 4px; vertical-align: top; }
+.prose-rtl p:has(> img) { display: inline-block; width: auto; margin: 4px; }
+.prose-rtl p { margin-bottom: .75rem; line-height: 2; text-align: center; }
 .prose-rtl hr { border-color: var(--color-edge); margin: 1.25rem 0; }
 .prose-rtl a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
 .prose-rtl strong { color: var(--color-ink); }
