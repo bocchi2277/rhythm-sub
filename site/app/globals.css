@@ -1,0 +1,121 @@
+﻿@import "tailwindcss";
+
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-arabic-400-normal.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+200F, U+2062-2064, U+2066-206F, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-arabic-500-normal.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+200F, U+2062-2064, U+2066-206F, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-latin-500-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-arabic-700-normal.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+200F, U+2062-2064, U+2066-206F, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-latin-700-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme {
+  --color-bg: #0d0f14;
+  --color-panel: #12151d;
+  --color-card: #171b26;
+  --color-edge: #232a3a;
+  --color-accent: #29a8e0;
+  --color-accent-deep: #1479ab;
+  --color-glow: rgba(41, 168, 224, 0.35);
+  --color-ink: #e8ecf3;
+  --color-muted: #94a0b5;
+  --font-sans: 'IBM Plex Sans Arabic', system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(41, 168, 224, 0.08), transparent),
+    radial-gradient(circle at 85% 110%, rgba(41, 168, 224, 0.05), transparent 40%);
+  min-height: 100vh;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.glass {
+  background: rgba(18, 21, 29, 0.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+.btn-accent {
+  background: linear-gradient(135deg, var(--color-accent-deep), var(--color-accent));
+  box-shadow: 0 4px 20px var(--color-glow);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.btn-accent:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+  box-shadow: 0 8px 28px var(--color-glow);
+}
+
+.card-hover {
+  transition: transform .2s cubic-bezier(.16, 1, .3, 1), box-shadow .2s ease, border-color .2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  border-color: var(--color-accent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45), 0 0 0 1px var(--color-accent), 0 4px 24px var(--color-glow);
+}
+
+.fade-up {
+  animation: fadeUp .5s cubic-bezier(.16, 1, .3, 1) both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+.no-scrollbar::-webkit-scrollbar { height: 6px; }
+.no-scrollbar::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 3px; }
+
+.prose-rtl img { max-width: 100%; height: auto; border-radius: 12px; margin-inline: auto; }
+.prose-rtl p { margin-bottom: .75rem; line-height: 1.9; }

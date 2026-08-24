@@ -1,0 +1,19 @@
+{
+  "seriesSlug": "youjo-senki-ii",
+  "seriesTitle": "Youjo Senki II",
+  "episodeNumber": 8,
+  "label": "Youjo Senki II - 08 [1080p HEVC]",
+  "date": "2026-08-27",
+  "coverUrl": "/img/ضع-معرف-الصورة-هنا.webp",
+  "qualities": [
+    {
+      "quality": "[1080p HEVC]",
+      "links": [
+        { "name": "MEGA", "url": "https://mega.nz/file/xxxx#yyyy" },
+        { "name": "Torrent", "url": "https://nyaa.si/download/0000000.torrent" }
+      ]
+    }
+  ],
+  "synopsis": "وصف قصير للحلقة (اختياري)",
+  "staff": { "TL": ["اسم"], "TLC": ["اسم"], "TS-Karaoke": ["اسم"] }
+}
