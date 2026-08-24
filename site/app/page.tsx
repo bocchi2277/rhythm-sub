@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { latestReleases, ongoing, allSeries, img } from '@/lib/data';
+import { latestReleases, currentProjects, allSeries, img } from '@/lib/data';
 import AnimeCard from '@/components/AnimeCard';
 
 function SectionTitle({ title, href }: { title: string; href?: string }) {
@@ -25,7 +25,7 @@ export default function Home() {
     .filter((s) => s.rating != null)
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
     .slice(0, 10);
-  const ongoingList = ongoing.slice(0, 12);
+  const ongoingList = currentProjects.slice(0, 12);
 
   return (
     <div className="max-w-7xl mx-auto px-4">
@@ -74,14 +74,19 @@ export default function Home() {
         <SectionTitle title="أحدث الإصدارات" href="/list/" />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {recent.map(({ series, ep }, i) => (
-            <AnimeCard key={`${ep.slug}-${i}`} series={series} episodeBadge={ep.number != null ? `حلقة ${ep.number}` : undefined} />
+            <AnimeCard
+              key={`${ep.slug}-${i}`}
+              series={series}
+              imageOverride={ep.cover}
+              badge={ep.number != null ? `الحلقة ${ep.number}` : ep.label || undefined}
+            />
           ))}
         </div>
       </section>
 
       <section className="mt-12 grid lg:grid-cols-[1fr_300px] gap-8">
         <div>
-          <SectionTitle title="الأعمال الجارية" />
+          <SectionTitle title="مشاريعنا الحالية" />
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
             {ongoingList.map((s) => (
               <AnimeCard key={s.key} series={s} />
@@ -114,7 +119,7 @@ export default function Home() {
 
       <section className="mt-14 glass border border-edge rounded-3xl p-8 text-center fade-up">
         <h2 className="text-2xl font-bold">تبحث عن أنمي معين؟</h2>
-        <p className="text-muted mt-2 text-sm">تصفح مكتبتنا كاملة ({allSeries.length} عمل) أو استخدم البحث المتقدم بالفلاتر</p>
+        <p className="text-muted mt-2 text-sm">تصفح مكتبتنا كاملة أو استخدم البحث المتقدم بالفلاتر</p>
         <div className="mt-5 flex justify-center gap-3 flex-wrap">
           <Link href="/list/" className="btn-accent px-6 py-3 rounded-xl text-sm font-bold">
             قائمة الأنمي

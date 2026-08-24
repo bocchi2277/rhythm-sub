@@ -142,6 +142,47 @@ for (const r of teamReleases) {
 
 export const allSeries: Series[] = merged;
 
+export type SitePage = {
+  key: string;
+  url: string;
+  title: string;
+  contentHtml: string;
+  images: string[];
+};
+
+type FooterData = { footerHtml: string; socials: { name: string; url: string }[] };
+
+let sitePages: Record<string, SitePage> = {};
+let footerData: FooterData = { footerHtml: '', socials: [] };
+try {
+  const pagesDir = path.join(process.cwd(), '..', 'data', 'pages');
+  for (const f of fs.readdirSync(pagesDir).filter((x) => x.endsWith('.json') && !x.startsWith('_'))) {
+    const p = JSON.parse(fs.readFileSync(path.join(pagesDir, f), 'utf8'));
+    sitePages[p.key] = { ...p, images: (p.images ?? []).map((u: string) => img(u)) };
+  }
+  footerData = JSON.parse(fs.readFileSync(path.join(pagesDir, '_footer.json'), 'utf8'));
+} catch {}
+
+export function sitePage(key: string): SitePage | null {
+  return sitePages[key] ?? null;
+}
+
+export function mappedHtml(html: string): string {
+  return html.replace(/https?:\/\/(?:i\d\.wp\.com\/)?rhythm-sub\.com\/wp-content\/[^"'\s)]+/g, (u) => {
+    const clean = u.replace(/^(https?:\/\/)(i\d\.wp\.com\/)?rhythm-sub\.com/, 'https://rhythm-sub.com').split('?')[0];
+    return img(clean);
+  });
+}
+
+export const footer = footerData;
+
+const THIRTY_DAYS = 30 * 24 * 3600 * 1000;
+
+export const currentProjects = allSeries
+  .filter((s) => /ongoing/i.test(s.status ?? ''))
+  .filter((s) => s.lastReleaseAt && Date.now() - new Date(s.lastReleaseAt).getTime() < THIRTY_DAYS)
+  .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
+
 export const latestReleases = allSeries
   .flatMap((s) => s.episodes.map((e) => ({ series: s, ep: e })))
   .sort((a, b) => String(b.ep.date ?? '').localeCompare(String(a.ep.date ?? '')));

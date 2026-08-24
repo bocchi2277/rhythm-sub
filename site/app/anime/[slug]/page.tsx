@@ -204,11 +204,11 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           {Object.keys(s.staff).length > 0 && (
             <div className="bg-card border border-edge rounded-2xl p-5">
               <h3 className="font-bold mb-3">العاملون على المشروع</h3>
-              <dl className="space-y-1.5 text-sm">
+              <dl dir="ltr" className="space-y-1.5 text-sm text-left">
                 {Object.entries(s.staff).map(([role, names]) => (
-                  <div key={role} className="flex gap-2">
-                    <dt className="text-accent shrink-0 w-28 font-medium">{role}</dt>
-                    <dd className="text-muted">{names.join('، ')}</dd>
+                  <div key={role} className="flex gap-3">
+                    <dt className="text-accent shrink-0 w-24 font-medium">{role}</dt>
+                    <dd className="text-muted" dir="auto">{names.join('، ')}</dd>
                   </div>
                 ))}
               </dl>

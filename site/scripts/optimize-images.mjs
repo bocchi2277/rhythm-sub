@@ -21,6 +21,13 @@ for (const s of series) {
     for (const im of e.contentImages ?? []) if (im.includes('rhythm-sub.com')) urls.add(im);
   }
 }
+const pagesDir = path.join(DATA, 'pages');
+if (fs.existsSync(pagesDir)) {
+  for (const f of fs.readdirSync(pagesDir).filter((x) => x.endsWith('.json') && !x.startsWith('_'))) {
+    const p = JSON.parse(fs.readFileSync(path.join(pagesDir, f), 'utf8'));
+    for (const im of p.images ?? []) if (im.includes('rhythm-sub.com')) urls.add(im);
+  }
+}
 
 let manifest = {};
 try {

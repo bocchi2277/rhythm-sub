@@ -1,7 +1,7 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { DATA } from './util.mjs';
+const DATA = path.resolve(process.cwd(), '../data');
 
 const IMG_DIR = path.join(DATA, 'images');
 const MAP_FILE = path.join(DATA, 'image_map.json');

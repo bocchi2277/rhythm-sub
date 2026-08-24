@@ -16,23 +16,16 @@ export function StatusBadge({ status }: { status?: string | null }) {
   );
 }
 
-export function QualityRibbon({ label }: { label?: string }) {
-  const m = label?.match(/\[(BD|WEB(?:-DL)?|DVD|HDTV)\b/i);
-  if (!m) return null;
-  return (
-    <span className="absolute -start-8 top-3 rotate-[-45deg] w-32 text-center text-[10px] font-bold py-0.5 bg-accent-deep text-white shadow-lg">
-      {m[1].toUpperCase()}
-    </span>
-  );
-}
-
 export default function AnimeCard({
   series,
-  episodeBadge
+  imageOverride,
+  badge
 }: {
   series: Pick<Series, 'slug' | 'title' | 'cover' | 'rating' | 'status' | 'type' | 'episodes'>;
-  episodeBadge?: string;
+  imageOverride?: string | null;
+  badge?: string;
 }) {
+  const src = img(imageOverride ?? series.cover);
   return (
     <Link
       href={`/anime/${series.slug}/`}
@@ -42,15 +35,15 @@ export default function AnimeCard({
       <div className="relative aspect-[2/3] overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={img(series.cover)}
-          alt={series.title}
+          src={src}
+          alt={badge ? `${series.title} - ${badge}` : series.title}
           loading="lazy"
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-        {episodeBadge && (
+        {badge && (
           <span className="absolute bottom-2 end-2 text-[11px] font-bold px-2 py-1 rounded-lg glass border border-edge">
-            {episodeBadge}
+            {badge}
           </span>
         )}
         {series.rating != null && (
@@ -67,7 +60,7 @@ export default function AnimeCard({
           </span>
         )}
       </div>
-      <h3 className="p-3 text-sm font-medium leading-snug line-clamp-2 group-hover:text-accent transition-colors">
+      <h3 dir="ltr" className="p-3 text-sm font-medium leading-snug line-clamp-2 text-right group-hover:text-accent transition-colors">
         {series.title}
       </h3>
     </Link>

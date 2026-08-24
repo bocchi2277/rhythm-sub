@@ -118,4 +118,10 @@ body {
 .no-scrollbar::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 3px; }
 
 .prose-rtl img { max-width: 100%; height: auto; border-radius: 12px; margin-inline: auto; }
-.prose-rtl p { margin-bottom: .75rem; line-height: 1.9; }
+.prose-rtl p { margin-bottom: .75rem; line-height: 2; }
+.prose-rtl hr { border-color: var(--color-edge); margin: 1.25rem 0; }
+.prose-rtl a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
+.prose-rtl strong { color: var(--color-ink); }
+.prose-rtl table { width: 100%; border-collapse: collapse; }
+.prose-rtl td, .prose-rtl th { border: 1px solid var(--color-edge); padding: .5rem .75rem; }
+.prose-rtl form { display: none; }

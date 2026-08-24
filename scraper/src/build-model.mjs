@@ -57,6 +57,7 @@ function main() {
 
   const seriesList = [];
   const slugIndex = new Map();
+  const usedSlugs = new Set();
 
   for (const [, groupPosts] of groups) {
     groupPosts.sort((a, b) => String(b.publishedAt ?? '').localeCompare(String(a.publishedAt ?? '')));
@@ -70,6 +71,17 @@ function main() {
         uniq.push(p);
       }
     }
+
+    let slug = normalizeSlug(newest.slug);
+    if (usedSlugs.has(slug)) {
+      if (newest.year && !usedSlugs.has(`${slug}-${newest.year}`)) slug = `${slug}-${newest.year}`;
+      else {
+        let n = 2;
+        while (usedSlugs.has(`${slug}-${n}`)) n++;
+        slug = `${slug}-${n}`;
+      }
+    }
+    usedSlugs.add(slug);
 
     const episodes = uniq.map((p) => ({
       slug: p.slug,
@@ -93,6 +105,7 @@ function main() {
     const staff = {};
     for (const p of uniq) {
       for (const [role, names] of Object.entries(p.staff ?? {})) {
+        if (/^anime info$/i.test(role.trim())) continue;
         staff[role] = staff[role] ?? [];
         for (const n of names) if (!staff[role].includes(n)) staff[role].push(n);
       }
@@ -103,7 +116,7 @@ function main() {
     const series = {
       key: newest.malUrl ? `mal:${newest.malUrl}` : `slug:${normalizeSlug(newest.slug)}`,
       malUrl: pickLatest(uniq, (p) => p.malUrl),
-      slug: normalizeSlug(newest.slug),
+      slug,
       title: (newest.title ?? '').replace(/\s*[-–]\s*\d{1,4}\s*$/, '').trim() || newest.title,
       altTitles: pickLatest(uniq, (p) => p.altTitles),
       cover: pickLatest(uniq, (p) => p.cover),
