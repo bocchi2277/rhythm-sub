@@ -124,6 +124,15 @@ body {
 .prose-rtl p.wp-img-row { display: flex !important; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 16px; margin: 12px 0; }
 .prose-rtl p.wp-img-row img { margin: 0; border-radius: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
 .prose-rtl p.wp-img-row.single { gap: 0; }
+
+/* Hard guarantee: card titles NEVER exceed 2 lines (inline -webkit-box gets
+   overridden to flow-root by some resets, so enforce with !important) */
+.clamp-2-hard {
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
 .prose-rtl p { margin-bottom: .75rem; line-height: 2; text-align: center; }
 .prose-rtl hr { border-color: var(--color-edge); margin: 1.25rem 0; }
 .prose-rtl a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }

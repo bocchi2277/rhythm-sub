@@ -69,8 +69,7 @@ export default function AnimeCard({
       </div>
       <h3
         dir="ltr"
-        className="p-3 text-sm font-medium leading-snug text-left group-hover:text-accent transition-colors"
-        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+        className="clamp-2-hard p-3 text-sm font-medium leading-snug text-left group-hover:text-accent transition-colors"
       >
         {series.title}
       </h3>
