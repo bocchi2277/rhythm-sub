@@ -103,8 +103,9 @@ for (const s of merged) {
     // rows differ in the quality string itself (1080p vs 720p vs HEVC...).
     const baseQuality = (q: { quality: string }) => q.quality.replace(/\[[0-9A-Fa-f]{6,12}\]/g, '').trim();
     const hashed = e.qualities.filter((q) => /\[[0-9A-Fa-f]{6,12}\]/.test(q.quality));
+    const distinctHashes = new Set(hashed.map((q) => (q.quality.match(/\[[0-9A-Fa-f]{6,12}\]/) ?? [''])[0]));
     const hashBatch =
-      hashed.length >= 4 && new Set(hashed.map(baseQuality)).size === 1;
+      hashed.length >= 4 && distinctHashes.size >= 4 && new Set(hashed.map(baseQuality)).size === 1;
     const singleBatch =
       e.displayNum &&
       /^\d{1,4}$/.test(e.displayNum) &&
@@ -169,7 +170,55 @@ for (const s of merged) {
     }
   }
   expanded.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
-  s.episodes = expanded;
+
+  // ── Deduplicate re-releases (TV weekly post + BD volume batch of the same episode) ──
+  // When two cards carry the SAME episode number AND the same title stem, they are the
+  // same content published twice (weekly WEB release → remastered BD volume). Merge into
+  // ONE card: newest label/date wins, older download rows stack beneath for choice.
+  // Corrupt source numbers (e.g. 204 from "2"+"04") never match a sane stem, so they stay.
+  // Stem = label with ALL trailing number/Vol tokens removed (loop handles "Vol.03 - 12",
+  // "Alya-san 01", "Kiroku Vol.1" — with or without a dash before the number).
+  const stemOf = (ep: Episode) => {
+    let l = ep.label.trim().toLowerCase();
+    let prev: string | null = null;
+    while (prev !== l) {
+      prev = l;
+      l = l.replace(/(\s*[-~]\s*)(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
+      l = l.replace(/\s+(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
+      l = l.replace(/[\s\-~]+$/, '');
+    }
+    return l;
+  };
+  const byNumber = new Map<number, Episode>();
+  const finalList: Episode[] = [];
+  // Key on the EFFECTIVE badge number (displayNum — what the user actually sees), not the
+  // raw scraped `number` field which is sometimes wrong (e.g. "Movie 1" post tagged 2).
+  const badgeOf = (ep: Episode): number | null => {
+    if (ep.displayNum && /^\d{1,4}$/.test(ep.displayNum)) return parseInt(ep.displayNum, 10);
+    return ep.number != null && ep.number <= 9999 ? ep.number : null;
+  };
+  for (const ep of expanded) {
+    const key = badgeOf(ep);
+    if (key == null) {
+      finalList.push(ep);
+      continue;
+    }
+    const existing = byNumber.get(key);
+    if (!existing) {
+      byNumber.set(key, ep);
+      finalList.push(ep);
+    } else if (stemOf(existing) === stemOf(ep)) {
+      const newer = (ep.date ?? '') > (existing.date ?? '') ? ep : existing;
+      const older = newer === ep ? existing : ep;
+      newer.qualities = [...newer.qualities, ...older.qualities];
+      const idx = finalList.indexOf(older);
+      if (idx >= 0) finalList[idx] = newer;
+    } else {
+      // Same number but different titles (data-level duplicate posts): keep both.
+      finalList.push(ep);
+    }
+  }
+  s.episodes = finalList;
 }
 
 const familyMap = new Map<string, Series[]>();
