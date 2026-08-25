@@ -84,7 +84,7 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         </div>
       </div>
 
-      <div className="absolute bottom-4 start-4 flex items-center gap-2 z-10">
+      <div className="absolute bottom-4 left-4 flex items-center gap-2 z-10">
         <button
           onClick={() => manual(prev)}
           aria-label="السابق"
