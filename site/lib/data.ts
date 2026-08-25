@@ -97,24 +97,36 @@ for (const s of merged) {
     // quality string (e.g. 4× "[XXXXXXXX][1080p HEVC]") — that means N different episode files in
     // one post (like Revive's 01..04 cards), NOT N re-encodes of one episode/movie.
     const baseQuality = (q: { quality: string }) => q.quality.replace(/\[[0-9A-Fa-f]{6,12}\]/g, '').trim();
+    const hashed = e.qualities.filter((q) => /\[[0-9A-Fa-f]{6,12}\]/.test(q.quality));
     const hashBatch =
-      e.qualities.length >= 4 &&
-      e.qualities.every((q) => /\[[0-9A-Fa-f]{6,12}\]/.test(q.quality)) &&
-      new Set(e.qualities.map(baseQuality)).size === 1;
+      hashed.length >= 4 && new Set(hashed.map(baseQuality)).size === 1;
     const singleBatch =
       e.displayNum &&
       /^\d{1,4}$/.test(e.displayNum) &&
-      (e.qualities.length >= 6 || hashBatch);
-    if (range && e.qualities.length >= 3) {
-      const start = parseInt(range[1], 10);
-      e.qualities.forEach((q, i) => {
+      !hashBatch &&
+      e.qualities.length >= 6;
+    // "Vol.NN - X" convention: X = first episode of the volume batch. Degenerate "N - N" doesn't count.
+    const labelRange = e.label.match(/(?:^|[^0-9])(\d{1,4})\s*[-~]\s*(\d{1,4})(?!\d)/);
+    const batchStart =
+      labelRange && parseInt(labelRange[1], 10) < parseInt(labelRange[2], 10)
+        ? parseInt(labelRange[2], 10)
+        : null;
+    const perCardTitle = (n: number) =>
+      /(\s*[-~]\s*)\d{1,4}(\s*(?:END|الأخيرة)?)\s*$/i.test(e.label)
+        ? e.label.replace(/(\s*[-~]\s*)\d{1,4}(\s*(?:END|الأخيرة)?)\s*$/i, `$1${n}$2`)
+        : `${e.label} - ${n}`;
+    if ((hashBatch || e.qualities.length === hashed.length + 1) && batchStart != null) {
+      // Split the distinct hashed episode files into individual cards; keep any trailing
+      // un-hashed row (usually the batch Torrent) attached to the FIRST card of the volume.
+      const torrentRows = e.qualities.filter((q) => !/\[[0-9A-Fa-f]{6,12}\]/.test(q.quality));
+      hashed.forEach((q, i) => {
         expanded.push({
           ...e,
-          number: start + i,
-          displayNum: String(start + i),
-          label: e.label.replace(/\s*\[01~\d+\]/, '').trim() || e.label,
-          qualities: [q],
-          slug: `${e.slug}-p${start + i}`
+          number: batchStart + i,
+          displayNum: String(batchStart + i),
+          label: perCardTitle(batchStart + i),
+          qualities: i === 0 ? [q, ...torrentRows] : [q],
+          slug: `${e.slug}-p${batchStart + i}`
         });
       });
     } else if (singleBatch && e.displayNum) {
@@ -126,6 +138,18 @@ for (const s of merged) {
           displayNum: String(start + i),
           qualities: [q],
           slug: `${e.slug}-p${start + i}`
+        });
+      });
+    } else if (batchStart != null && !hashBatch && !singleBatch && e.qualities.length >= 3) {
+      // Range-style batch without per-file hashes (e.g. "[01~04][BD]" posts): one card per episode.
+      e.qualities.forEach((q, i) => {
+        expanded.push({
+          ...e,
+          number: batchStart + i,
+          displayNum: String(batchStart + i),
+          label: perCardTitle(batchStart + i),
+          qualities: [q],
+          slug: `${e.slug}-p${batchStart + i}`
         });
       });
     } else {

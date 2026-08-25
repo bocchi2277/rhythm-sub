@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main>{children}</main>
         <footer className="border-t border-edge mt-16">
           <div className="max-w-7xl mx-auto px-4 py-10 grid grid-cols-2 md:grid-cols-3 gap-8 text-sm">
-            <div className="order-2 md:order-1">
+            <div className="order-2 md:order-1 md:justify-self-start">
               <h4 className="font-bold mb-3">تصفح</h4>
               <ul className="space-y-2 text-muted">
                 <li><Link href="/list" className="hover:text-accent">قائمة [A-Z]</Link></li>
@@ -41,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <li><Link href="/random" className="hover:text-accent">فاجئني</Link></li>
               </ul>
             </div>
-            <div className="order-1 md:order-2 col-span-2 md:col-span-1 flex flex-col items-center md:items-center text-center">
+            <div className="order-1 md:order-2 col-span-2 md:col-span-1 flex flex-col items-center text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo.png" alt="Rhythm-Sub" className="h-24 w-auto" />
               {socials.length > 0 && (
@@ -63,7 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               )}
             </div>
-            <div className="order-3 md:order-3 ms-auto md:ms-0 w-fit">
+            <div className="order-2 md:order-3 w-fit md:justify-self-end">
               <h4 className="font-bold mb-3">الفريق</h4>
               <ul className="space-y-2 text-muted">
                 <li><Link href="/about" className="hover:text-accent">من نحن</Link></li>
