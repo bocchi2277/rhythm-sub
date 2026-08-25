@@ -320,10 +320,20 @@ export function sitePage(key: string): SitePage | null {
 }
 
 export function mappedHtml(html: string): string {
-  return html.replace(/https?:\/\/(?:i\d\.wp\.com\/)?rhythm-sub\.com\/wp-content\/[^"'\s)]+/g, (u) => {
+  const mapped = html.replace(/https?:\/\/(?:i\d\.wp\.com\/)?rhythm-sub\.com\/wp-content\/[^"'\s)]+/g, (u) => {
     const clean = u.replace(/^(https?:\/\/)(i\d\.wp\.com\/)?rhythm-sub\.com/, 'https://rhythm-sub.com').split('?')[0];
     return img(clean);
   });
+  // Normalize WordPress card rows: strip &nbsp; spacers inside paragraphs that hold
+  // multiple images, so CSS can lay them out as clean centered flex rows.
+  return mapped.replace(
+    /<p([^>]*)>((?:\s|&nbsp;)*(?:<img[^>]*>(?:\s|&nbsp;*)*)+)<\/p>/gi,
+    (_m, attrs: string, inner: string) => {
+      const imgs = inner.match(/<img[^>]*>/g) ?? [];
+      const single = imgs.length === 1 ? ' single' : '';
+      return `<p${attrs} class="wp-img-row${single}">${imgs.join('')}</p>`;
+    }
+  );
 }
 
 export const footer = footerData;

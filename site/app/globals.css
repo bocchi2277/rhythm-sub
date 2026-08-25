@@ -120,11 +120,10 @@ body {
 .no-scrollbar::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 3px; }
 
 .prose-rtl img { display: inline-block; max-width: min(100%, 260px); height: auto; border-radius: 12px; margin: 4px; vertical-align: top; }
-/* Team-card rows: any paragraph made purely of card images renders as a centered flex row */
-.prose-rtl p:has(img):has(> img:first-child) { text-align: center; }
-.prose-rtl p:has(> img:nth-child(2)) { display: flex !important; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 14px; margin: 10px 0; }
-.prose-rtl p:has(> img:nth-child(2)) img { margin: 0; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
-.prose-rtl p:has(> img:nth-child(2)) + p:empty, .prose-rtl p:has(> img:only-child):not(:has([src*="img/"])) { display: none; }
+/* WordPress image rows normalized by mappedHtml(): centered flex rows, tight like the original site */
+.prose-rtl p.wp-img-row { display: flex !important; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 16px; margin: 12px 0; }
+.prose-rtl p.wp-img-row img { margin: 0; border-radius: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+.prose-rtl p.wp-img-row.single { gap: 0; }
 .prose-rtl p { margin-bottom: .75rem; line-height: 2; text-align: center; }
 .prose-rtl hr { border-color: var(--color-edge); margin: 1.25rem 0; }
 .prose-rtl a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
