@@ -86,7 +86,7 @@ export default function Header() {
           onClick={() => setOpen(!open)}
           aria-label={open ? 'إغلاق القائمة' : 'فتح القائمة'}
           aria-expanded={open}
-          className="lg:hidden relative w-10 h-10 grid place-items-center rounded-xl border border-edge hover:border-accent transition-colors shrink-0"
+          className="lg:hidden relative ms-auto w-10 h-10 grid place-items-center rounded-xl border border-edge hover:border-accent transition-colors shrink-0"
         >
           <span className="relative block w-5 h-5">
             <span

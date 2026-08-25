@@ -45,6 +45,17 @@ function pickLatest(posts, getter) {
   return null;
 }
 
+function cleanSynopsis(s) {
+  if (!s) return '';
+  let t = String(s)
+    .replace(/^قصة\s*الأنمي\s*[:：]?\s*/i, '')
+    .replace(/^ملخص\s*[^\n]{0,80}[:：]\s*/i, '')
+    .trim();
+  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات)\s*:/.test(t)) return '';
+  if (t.length < 15) return '';
+  return t;
+}
+
 function main() {
   const files = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.json'));
   const posts = files.map((f) => JSON.parse(fs.readFileSync(path.join(POSTS_DIR, f), 'utf8')));
@@ -143,7 +154,7 @@ function main() {
       type: pickLatest(uniq, (p) => p.type),
       episodesCount: pickLatest(uniq, (p) => p.episodesCount),
       rating: pickLatest(uniq, (p) => p.rating),
-      synopsis: pickLatest(uniq, (p) => p.synopsis),
+      synopsis: cleanSynopsis(pickLatest(uniq, (p) => p.synopsis)),
       trailerYoutubeId: pickLatest(uniq, (p) => p.trailerYoutubeId),
       staff,
       seriesGuideUrls: guideUrls,

@@ -1,7 +1,8 @@
 ﻿import Link from 'next/link';
 import { latestReleases, currentProjects, allSeries, img } from '@/lib/data';
 import AnimeCard from '@/components/AnimeCard';
-import EpisodeCard from '@/components/EpisodeCard';
+import LatestEpisodes from '@/components/LatestEpisodes';
+import type { EpisodeCardItem } from '@/components/EpisodeCard';
 
 function SectionTitle({ title, href }: { title: string; href?: string }) {
   return (
@@ -20,8 +21,10 @@ function SectionTitle({ title, href }: { title: string; href?: string }) {
 }
 
 export default function Home() {
-  const featured = latestReleases[0]?.series;
-  const recent = latestReleases.slice(0, 9);
+  const pool = latestReleases.slice(0, 50);
+  const randomPick = pool[Math.floor(Math.random() * pool.length)];
+  const featured = randomPick?.series;
+  const recent = latestReleases.slice(0, 135);
   const topRated = [...allSeries]
     .filter((s) => s.rating != null)
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
@@ -71,13 +74,20 @@ export default function Home() {
         </section>
       )}
 
-      <section className="mt-10">
-        <SectionTitle title="آخر الحلقات" href="/list/" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {recent.map(({ series, ep }, i) => (
-            <EpisodeCard key={`${ep.slug}-${i}`} series={series} ep={ep} />
-          ))}
-        </div>
+      <section id="latest" className="mt-10 scroll-mt-24">
+        <SectionTitle title="آخر الحلقات" />
+        <LatestEpisodes
+          items={
+            recent.map(({ series, ep }): EpisodeCardItem => ({
+              slug: series.slug,
+              title: series.title,
+              label: ep.label || series.title,
+              image: img(ep.cardImage ?? ep.cover),
+              badge: ep.displayNum ? (/^\d+$/.test(ep.displayNum) ? `الحلقة ${ep.displayNum}` : `الحلقة ${ep.displayNum}`) : null,
+              date: ep.date
+            }))
+          }
+        />
       </section>
 
       <section className="mt-12 grid lg:grid-cols-[1fr_300px] gap-8">
@@ -118,33 +128,15 @@ export default function Home() {
           href="https://www.paypal.me/shahabalbalushi1995"
           target="_blank"
           rel="noopener noreferrer"
-          className="card-hover group relative block rounded-3xl overflow-hidden border border-edge min-h-[150px]"
+          className="card-hover block rounded-3xl overflow-hidden border border-edge"
+          aria-label="كن راعيًا لنا"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/banners/sponsor.jpg"
-            alt="كن راعيًا لنا"
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-          />
-          <span className="absolute bottom-3 end-3 text-xs font-bold px-3 py-1.5 rounded-xl glass border border-edge">
-            ادعمنا عبر PayPal ←
-          </span>
+          <img src="/banners/sponsor.jpg" alt="كن راعيًا لنا" loading="lazy" className="w-full h-auto block" />
         </a>
-        <Link
-          href="/support/"
-          className="card-hover group relative block rounded-3xl overflow-hidden border border-edge min-h-[150px]"
-        >
+        <Link href="/support/" className="card-hover block rounded-3xl overflow-hidden border border-edge" aria-label="الدعم الفني">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/banners/tech-support.jpg"
-            alt="الدعم الفني"
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-          />
-          <span className="absolute bottom-3 end-3 text-xs font-bold px-3 py-1.5 rounded-xl glass border border-edge">
-            تواصل معنا ←
-          </span>
+          <img src="/banners/tech-support.jpg" alt="الدعم الفني" loading="lazy" className="w-full h-auto block" />
         </Link>
       </section>
     </div>

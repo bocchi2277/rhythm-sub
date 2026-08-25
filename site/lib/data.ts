@@ -74,7 +74,17 @@ function displayNumber(ep: { label: string; number: number | null; slug: string 
   return ep.number != null ? String(ep.number) : null;
 }
 
+function safeSynopsis(s: string | null | undefined): string {
+  if (!s) return '';
+  const t = String(s)
+    .replace(/^قصة\s*الأنمي\s*[:：]?\s*/i, '')
+    .trim();
+  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات)\s*:/.test(t)) return '';
+  return t;
+}
+
 for (const s of merged) {
+  s.synopsis = safeSynopsis(s.synopsis);
   for (const e of s.episodes) {
     e.contentImages = e.contentImages ?? [];
     const distinct = e.contentImages.find((u) => u && u !== e.cover);

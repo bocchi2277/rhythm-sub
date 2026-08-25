@@ -5,7 +5,7 @@ import { socials } from '@/lib/data';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'Rhythm-Sub | ترجمة الأنمي العربية', template: '%s | Rhythm-Sub' },
+  title: { default: 'Rhythm-Sub', template: '%s | Rhythm-Sub' },
   description: 'الموقع الرسمي لفرقة Rhythm-Sub لترجمة الأنمي — تحميل الحلقات المترجمة بروابط مباشرة وتورنت',
   icons: { icon: [{ url: '/favicon-32.png' }, { url: '/favicon-192.png', sizes: '192x192' }] }
 };
@@ -62,7 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <li><Link href="/random" className="hover:text-accent">فاجئني</Link></li>
               </ul>
             </div>
-            <div>
+            <div className="ms-auto md:ms-auto w-fit">
               <h4 className="font-bold mb-3">الفريق</h4>
               <ul className="space-y-2 text-muted">
                 <li><Link href="/about" className="hover:text-accent">من نحن</Link></li>

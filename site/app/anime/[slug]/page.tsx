@@ -198,7 +198,7 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           )}
           {s.synopsis && (
             <div className="bg-card border border-edge rounded-2xl p-5">
-              <h3 className="font-bold mb-3">قصة الأنمي</h3>
+              <h3 className="font-bold mb-3">مُلخَّص القصَّة</h3>
               <p className="text-sm text-muted leading-relaxed whitespace-pre-line">{s.synopsis}</p>
             </div>
           )}
@@ -207,9 +207,9 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
               <h3 className="font-bold mb-3 text-center lg:text-start">العاملون على المشروع</h3>
               <dl dir="ltr" className="text-sm text-left w-fit mx-auto lg:mx-0 lg:w-full">
                 {Object.entries(s.staff).map(([role, names]) => (
-                  <div key={role} className="flex gap-3 py-2 border-b border-edge/50 last:border-0">
-                    <dt className="text-accent shrink-0 w-24 font-medium">{role}</dt>
-                    <dd className="text-muted" dir="auto">{names.join('، ')}</dd>
+                  <div key={role} className="flex flex-wrap gap-x-3 gap-y-1 py-2 border-b border-edge/50 last:border-0">
+                    <dt className="text-accent shrink-0 font-medium min-w-[5.5rem]">{role}</dt>
+                    <dd className="text-muted flex-1 min-w-0 break-words" dir="auto">{names.join('، ')}</dd>
                   </div>
                 ))}
               </dl>
@@ -218,7 +218,7 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
           {related.length > 0 && (
             <div className="bg-card border border-edge rounded-2xl p-5">
               <h3 className="font-bold mb-3">مواضيع ذات صلة</h3>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {related.map(
                   (r) =>
                     r && (
