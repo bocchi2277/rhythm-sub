@@ -10,3 +10,4 @@ data/*.log
 .next/
 out/
 site/scripts/preview-server.mjs
+site/scripts/review-shots/
