@@ -93,7 +93,18 @@ for (const s of merged) {
     e.displayNum = displayNumber(e);
 
     const range = e.displayNum?.match(/^(\d{1,4})~(\d{1,4})$/);
-    const singleBatch = e.displayNum && /^\d{1,4}$/.test(e.displayNum) && e.qualities.length >= 6;
+    // Episodic-batch fingerprint: every quality row carries a distinct hex hash over an IDENTICAL
+    // quality string (e.g. 4× "[XXXXXXXX][1080p HEVC]") — that means N different episode files in
+    // one post (like Revive's 01..04 cards), NOT N re-encodes of one episode/movie.
+    const baseQuality = (q: { quality: string }) => q.quality.replace(/\[[0-9A-Fa-f]{6,12}\]/g, '').trim();
+    const hashBatch =
+      e.qualities.length >= 4 &&
+      e.qualities.every((q) => /\[[0-9A-Fa-f]{6,12}\]/.test(q.quality)) &&
+      new Set(e.qualities.map(baseQuality)).size === 1;
+    const singleBatch =
+      e.displayNum &&
+      /^\d{1,4}$/.test(e.displayNum) &&
+      (e.qualities.length >= 6 || hashBatch);
     if (range && e.qualities.length >= 3) {
       const start = parseInt(range[1], 10);
       e.qualities.forEach((q, i) => {
