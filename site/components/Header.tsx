@@ -5,9 +5,13 @@ import { useState } from 'react';
 
 const NAV = [
   { href: '/', label: 'الرئيسية' },
-  { href: '/list', label: 'قائمة الأنمي' },
   { href: '/schedule', label: 'جدول الحلقات' },
   { href: '/advanced-search', label: 'البحث المتقدم' }
+];
+
+const LIST_LINKS = [
+  { href: '/list', label: 'قائمة [A-Z]' },
+  { href: '/series', label: 'السلاسل' }
 ];
 
 const ABOUT_LINKS = [
@@ -55,6 +59,23 @@ export default function Header() {
               {n.label}
             </Link>
           ))}
+          <div className="relative group">
+            <button className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap flex items-center gap-1">
+              قوائم أنمي
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <div className="absolute top-full start-0 pt-1 opacity-0 invisible translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200">
+              <div className="glass border border-edge rounded-2xl p-1.5 min-w-[150px] shadow-2xl">
+                {LIST_LINKS.map((n) => (
+                  <Link key={n.href} href={n.href} className="block px-3 py-2 rounded-xl text-sm hover:bg-card hover:text-accent transition-colors whitespace-nowrap">
+                    {n.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
           <div className="relative group">
             <button className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap flex items-center gap-1">
               عن الفريق
@@ -115,7 +136,7 @@ export default function Header() {
       >
         <div className="px-4 py-3 space-y-1 glass">
           <SearchForm className="pb-2" />
-          {[...NAV, { href: '/about', label: 'من نحن' }, { href: '/random', label: 'فاجئني 🎲' }, { href: '/support', label: 'الدعم الفني' }].map((n) => (
+          {[...NAV, { href: '/list', label: 'قائمة [A-Z]' }, { href: '/series', label: 'السلاسل' }, { href: '/about', label: 'من نحن' }, { href: '/random', label: 'فاجئني 🎲' }, { href: '/support', label: 'الدعم الفني' }].map((n) => (
             <Link
               key={n.href}
               href={n.href}

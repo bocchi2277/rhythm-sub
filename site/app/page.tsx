@@ -1,7 +1,8 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
 import { latestReleases, currentProjects, allSeries, img } from '@/lib/data';
 import AnimeCard from '@/components/AnimeCard';
 import LatestEpisodes from '@/components/LatestEpisodes';
+import HeroSlider, { type HeroSlide } from '@/components/HeroSlider';
 import type { EpisodeCardItem } from '@/components/EpisodeCard';
 
 function SectionTitle({ title, href }: { title: string; href?: string }) {
@@ -21,10 +22,21 @@ function SectionTitle({ title, href }: { title: string; href?: string }) {
 }
 
 export default function Home() {
-  const pool = latestReleases.slice(0, 50);
-  const randomPick = pool[Math.floor(Math.random() * pool.length)];
-  const featured = randomPick?.series;
-  const recent = latestReleases.slice(0, 135);
+  const heroSlides: HeroSlide[] = allSeries
+    .filter((s) => s.cover && s.synopsis)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 12)
+    .map((s) => ({
+      slug: s.slug,
+      title: s.title,
+      cover: img(s.cover),
+      synopsis: s.synopsis,
+      genres: s.genres,
+      rating: s.rating,
+      type: s.type?.text ?? '',
+      status: /completed/i.test(s.status ?? '') ? 'مكتمل' : 'مستمر'
+    }));
+  const recent = latestReleases;
   const topRated = [...allSeries]
     .filter((s) => s.rating != null)
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
@@ -33,46 +45,7 @@ export default function Home() {
 
   return (
     <div className="max-w-7xl mx-auto px-4">
-      {featured && (
-        <section className="relative mt-6 rounded-3xl overflow-hidden border border-edge fade-up">
-          <div
-            className="absolute inset-0 bg-cover bg-center opacity-30 blur-lg scale-110"
-            style={{ backgroundImage: `url('${encodeURI(img(featured.cover))}')` }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/85 to-bg/40" />
-          <div className="relative p-6 md:p-10 grid md:grid-cols-[220px_1fr] gap-6 items-end min-h-[340px]">
-            <div className="hidden md:block relative w-[200px] aspect-[2/3] rounded-2xl overflow-hidden border border-edge shadow-[0_20px_50px_rgba(0,0,0,.6)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img(featured.cover)} alt={featured.title} className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <span className="text-xs font-bold text-accent border border-accent/40 bg-accent/10 px-2.5 py-1 rounded-lg">
-                أحدث إصدار
-              </span>
-              <h1 className="mt-3 text-2xl md:text-4xl font-bold leading-tight">{featured.title}</h1>
-              <p className="mt-3 text-muted text-sm leading-relaxed line-clamp-2 max-w-2xl">{featured.synopsis}</p>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                {featured.genres.slice(0, 4).map((g) => (
-                  <span key={g} className="glass border border-edge px-3 py-1.5 rounded-lg">
-                    {g}
-                  </span>
-                ))}
-                {featured.rating != null && (
-                  <span className="glass border border-yellow-400/40 text-yellow-300 px-3 py-1.5 rounded-lg font-bold">
-                    ★ {featured.rating.toFixed(2)}
-                  </span>
-                )}
-              </div>
-              <Link
-                href={`/anime/${featured.slug}/`}
-                className="btn-accent inline-block mt-5 px-6 py-3 rounded-xl text-sm font-bold"
-              >
-                صفحة الأنمي والتحميل
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
+      <HeroSlider slides={heroSlides} />
 
       <section id="latest" className="mt-10 scroll-mt-24">
         <SectionTitle title="آخر الحلقات" />
@@ -128,15 +101,15 @@ export default function Home() {
           href="https://www.paypal.me/shahabalbalushi1995"
           target="_blank"
           rel="noopener noreferrer"
-          className="card-hover block rounded-3xl overflow-hidden border border-edge"
+          className="card-hover block rounded-3xl overflow-hidden border border-edge bg-panel h-52"
           aria-label="كن راعيًا لنا"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/banners/sponsor.jpg" alt="كن راعيًا لنا" loading="lazy" className="w-full h-auto block" />
+          <img src="/banners/sponsor.jpg" alt="كن راعيًا لنا" loading="lazy" className="w-full h-full object-contain" />
         </a>
-        <Link href="/support/" className="card-hover block rounded-3xl overflow-hidden border border-edge" aria-label="الدعم الفني">
+        <Link href="/support/" className="card-hover block rounded-3xl overflow-hidden border border-edge bg-panel h-52" aria-label="الدعم الفني">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/banners/tech-support.jpg" alt="الدعم الفني" loading="lazy" className="w-full h-auto block" />
+          <img src="/banners/tech-support.jpg" alt="الدعم الفني" loading="lazy" className="w-full h-full object-contain" />
         </Link>
       </section>
     </div>

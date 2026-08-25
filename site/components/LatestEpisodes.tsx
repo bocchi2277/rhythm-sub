@@ -16,7 +16,18 @@ export default function LatestEpisodes({ items }: { items: EpisodeCardItem[] }) 
     document.getElementById('latest')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  const nums: (number | '«' | '‹')[] = ['«', '‹', ...Array.from({ length: totalPages }, (_, i) => i + 1)];
+  const nums: (number | '«' | '‹' | '…')[] = ['«', '‹'];
+  if (totalPages <= 6) {
+    nums.push(...Array.from({ length: totalPages }, (_, i) => i + 1));
+  } else {
+    if (current <= 3) {
+      nums.push(1, 2, 3, 4, '…', totalPages);
+    } else if (current >= totalPages - 2) {
+      nums.push('…', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+    } else {
+      nums.push('…', current - 1, current, current + 1, '…', totalPages);
+    }
+  }
 
   return (
     <div>
@@ -29,7 +40,8 @@ export default function LatestEpisodes({ items }: { items: EpisodeCardItem[] }) 
       {totalPages > 1 && (
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="flex items-center gap-2 flex-wrap justify-center">
-            {nums.map((n) => {
+            {nums.map((n, ni) => {
+              if (n === '…') return <span key={`e${ni}`} className="px-1 text-muted">…</span>;
               if (typeof n !== 'number') {
                 const target = n === '«' ? 1 : Math.max(1, current - 1);
                 const disabled = current === 1;

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ongoing, allSeries } from '@/lib/data';
+import { currentProjects, allSeries } from '@/lib/data';
 
 export const metadata = { title: 'جدول الحلقات' };
 
@@ -19,8 +19,8 @@ function isFresh(iso: string | null): boolean {
 }
 
 export default function SchedulePage() {
-  const active = ongoing.filter((s) => s.episodes.length > 0 && s.episodes.some((e) => isFresh(e.date)));
-  const source = active.length ? active : ongoing.slice(0, 20);
+  const active = currentProjects.filter((s) => s.episodes.length > 0 && s.episodes.some((e) => isFresh(e.date)));
+  const source = active.length ? active : currentProjects;
 
   const byDay = new Map<number, typeof allSeries>();
   for (const s of source) {

@@ -26,20 +26,27 @@ export default function AnimeCard({
   badge?: string;
 }) {
   const src = img(imageOverride ?? series.cover);
+  const noImage = !imageOverride && !series.cover;
   return (
     <Link
       href={`/anime/${series.slug}/`}
       className="card-hover group relative block bg-card rounded-2xl overflow-hidden border border-edge"
     >
       <StatusBadge status={series.status} />
-      <div className="relative aspect-[2/3] overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={badge ? `${series.title} - ${badge}` : series.title}
-          loading="lazy"
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-        />
+      <div className="relative aspect-[2/3] overflow-hidden bg-panel">
+        {noImage ? (
+          <div className="w-full h-full grid place-items-center p-3 bg-gradient-to-br from-panel to-bg text-center">
+            <span dir="ltr" className="text-xs font-bold text-muted line-clamp-4">{series.title}</span>
+          </div>
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={src}
+            alt={badge ? `${series.title} - ${badge}` : series.title}
+            loading="lazy"
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
         {badge && (
           <span className="absolute bottom-2 end-2 text-[11px] font-bold px-2 py-1 rounded-lg glass border border-edge">
@@ -60,7 +67,11 @@ export default function AnimeCard({
           </span>
         )}
       </div>
-      <h3 dir="ltr" className="p-3 text-sm font-medium leading-snug line-clamp-2 text-left group-hover:text-accent transition-colors">
+      <h3
+        dir="ltr"
+        className="p-3 text-sm font-medium leading-snug text-left group-hover:text-accent transition-colors"
+        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+      >
         {series.title}
       </h3>
     </Link>

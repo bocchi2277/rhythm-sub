@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { allSeries } from '@/lib/data';
+import AnimeCard from '@/components/AnimeCard';
 
-export const metadata = { title: 'قائمة الأنمي' };
+export const metadata = { title: 'قائمة [A-Z]' };
 
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 
@@ -26,7 +27,7 @@ export default function ListPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 mt-6">
-      <h1 className="text-2xl font-bold mb-2">قائمة الأنمي</h1>
+      <h1 className="text-2xl font-bold mb-2">قائمة [A-Z]</h1>
       <p className="text-muted text-sm mb-5">{allSeries.length} عمل مترجم من فريق Rhythm-Sub</p>
 
       <nav className="sticky top-[68px] z-30 glass border border-edge rounded-2xl p-2 flex flex-wrap gap-1 mb-8">
@@ -37,21 +38,19 @@ export default function ListPage() {
         ))}
       </nav>
 
-      <div className="space-y-10">
+      <div className="space-y-12">
         {present.map((l) => (
           <section key={l}>
-            <h2 id={`L-${l}`} className="text-xl font-bold mb-4 scroll-mt-32 flex items-center gap-3">
+            <h2 id={`L-${l}`} className="text-xl font-bold mb-5 scroll-mt-32 flex items-center gap-3">
               <span className="btn-accent w-9 h-9 rounded-xl grid place-items-center text-sm">{l}</span>
               <span className="text-muted text-sm font-normal">({groups.get(l)!.length})</span>
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               {groups
                 .get(l)!
                 .sort((a, b) => a.title.localeCompare(b.title))
                 .map((s) => (
-                  <Link key={s.key} href={`/anime/${s.slug}/`} className="text-sm py-1.5 px-2 rounded-lg hover:bg-card hover:text-accent transition-colors truncate">
-                    {s.title}
-                  </Link>
+                  <AnimeCard key={s.key} series={s} />
                 ))}
             </div>
           </section>

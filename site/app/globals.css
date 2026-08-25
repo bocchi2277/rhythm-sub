@@ -119,8 +119,8 @@ body {
 .no-scrollbar::-webkit-scrollbar { height: 6px; }
 .no-scrollbar::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 3px; }
 
-.prose-rtl img { display: inline-block; max-width: min(100%, 300px); height: auto; border-radius: 12px; margin: 4px; vertical-align: top; }
-.prose-rtl p:has(> img) { display: inline-block; width: auto; margin: 4px; }
+.prose-rtl img { display: inline-block; max-width: min(100%, 260px); height: auto; border-radius: 12px; margin: 4px; vertical-align: top; }
+.prose-rtl p:has(> img:only-child), .prose-rtl div:has(> img:only-child) { display: inline-block; width: auto; margin: 4px; vertical-align: top; }
 .prose-rtl p { margin-bottom: .75rem; line-height: 2; text-align: center; }
 .prose-rtl hr { border-color: var(--color-edge); margin: 1.25rem 0; }
 .prose-rtl a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }

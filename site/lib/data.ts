@@ -85,13 +85,63 @@ function safeSynopsis(s: string | null | undefined): string {
 
 for (const s of merged) {
   s.synopsis = safeSynopsis(s.synopsis);
+  const expanded: Episode[] = [];
   for (const e of s.episodes) {
     e.contentImages = e.contentImages ?? [];
     const distinct = e.contentImages.find((u) => u && u !== e.cover);
     e.cardImage = distinct ?? e.cover ?? null;
     e.displayNum = displayNumber(e);
+
+    const range = e.displayNum?.match(/^(\d{1,4})~(\d{1,4})$/);
+    const singleBatch = e.displayNum && /^\d{1,4}$/.test(e.displayNum) && e.qualities.length >= 6;
+    if (range && e.qualities.length >= 3) {
+      const start = parseInt(range[1], 10);
+      e.qualities.forEach((q, i) => {
+        expanded.push({
+          ...e,
+          number: start + i,
+          displayNum: String(start + i),
+          label: e.label.replace(/\s*\[01~\d+\]/, '').trim() || e.label,
+          qualities: [q],
+          slug: `${e.slug}-p${start + i}`
+        });
+      });
+    } else if (singleBatch && e.displayNum) {
+      const start = parseInt(e.displayNum, 10);
+      e.qualities.forEach((q, i) => {
+        expanded.push({
+          ...e,
+          number: start + i,
+          displayNum: String(start + i),
+          qualities: [q],
+          slug: `${e.slug}-p${start + i}`
+        });
+      });
+    } else {
+      expanded.push(e);
+    }
+  }
+  expanded.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
+  s.episodes = expanded;
+}
+
+const familyMap = new Map<string, Series[]>();
+for (const s of merged) {
+  const token = s.slug.split('-')[0];
+  if (token.length >= 4) {
+    if (!familyMap.has(token)) familyMap.set(token, []);
+    familyMap.get(token)!.push(s);
   }
 }
+
+export const franchises: { name: string; works: Series[] }[] = [...familyMap.entries()]
+  .filter(([, works]) => works.length > 1)
+  .map(([, works]) => {
+    const sorted = [...works].sort((a, b) => a.title.length - b.title.length);
+    const words = sorted[0].title.replace(/[:–-].*$/, '').trim();
+    return { name: words || sorted[0].title, works: [...works].sort((a, b) => (a.year ?? 0) - (b.year ?? 0)) };
+  })
+  .sort((a, b) => b.works.length - a.works.length);
 
 let teamReleases: Record<string, unknown>[] = [];
 try {

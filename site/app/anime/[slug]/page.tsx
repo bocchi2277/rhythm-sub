@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { allSeries, bySlug, img } from '@/lib/data';
 import type { Episode } from '@/lib/data';
 import AnimeCard from '@/components/AnimeCard';
+import EpisodeRow from '@/components/EpisodeRow';
 
 export function generateStaticParams() {
   return allSeries.map((s) => ({ slug: s.slug }));
@@ -30,73 +31,6 @@ function Meta({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="text-muted shrink-0">{label}:</span>
       <span className="font-medium">{value}</span>
     </div>
-  );
-}
-
-function DownloadRow({ ep }: { ep: Episode }) {
-  return (
-    <details className="group bg-panel border border-edge rounded-2xl overflow-hidden open:border-accent/40 transition-colors">
-      <summary className="flex items-center gap-3 p-4 cursor-pointer select-none list-none hover:bg-card transition-colors">
-        <span className="btn-accent w-11 h-11 rounded-xl grid place-items-center font-bold text-sm shrink-0 px-1">
-          {ep.displayNum ?? '★'}
-        </span>
-        <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-bold truncate">{ep.label || `الحلقة ${ep.number}`}</h4>
-          <p className="text-xs text-muted mt-0.5">{fmtDate(ep.date)}</p>
-        </div>
-        {ep.qualities.length > 0 && (
-          <span className="hidden sm:inline-block text-xs font-bold text-accent border border-accent/40 bg-accent/10 px-3 py-1.5 rounded-lg">
-            تحميل ({ep.qualities.reduce((n, q) => n + q.links.length, 0)} روابط)
-          </span>
-        )}
-        <svg
-          viewBox="0 0 24 24"
-          className="w-5 h-5 text-muted group-open:rotate-180 transition-transform"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </summary>
-      <div className="px-4 pb-4 space-y-3">
-        {ep.synopsis && ep.qualities.length === 0 && (
-          <p className="text-sm text-muted leading-relaxed border-t border-edge pt-3">{ep.synopsis}</p>
-        )}
-        {ep.qualities.map((q, qi) => (
-          <div key={qi} className="border-t border-edge pt-3 first:border-0 first:pt-0">
-            <p className="text-xs font-bold text-muted mb-2">{q.quality}</p>
-            <div className="flex flex-wrap gap-2">
-              {q.links.map((l, li) => {
-                const isTorrent = /torrent|nyaa/i.test(l.name);
-                return (
-                  <a
-                    key={li}
-                    href={l.url}
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
-                    className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl transition-all ${
-                      isTorrent ? 'border border-edge hover:border-accent' : 'btn-accent'
-                    }`}
-                  >
-                    {isTorrent ? (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" strokeWidth="2" fill="none" />
-                      </svg>
-                    ) : (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                      </svg>
-                    )}
-                    {l.name}
-                  </a>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </details>
   );
 }
 
@@ -177,9 +111,9 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
             <span className="w-1.5 h-5 rounded-full btn-accent block" />
             قائمة الحلقات والإصدارات ({s.episodes.length})
           </h2>
-          <div className="space-y-3">
+          <div className="grid lg:grid-cols-2 gap-3">
             {[...s.episodes].reverse().map((ep) => (
-              <DownloadRow key={`${ep.slug}-${ep.postId}`} ep={ep} />
+              <EpisodeRow key={`${ep.slug}-${ep.postId}`} ep={ep} />
             ))}
           </div>
         </section>
