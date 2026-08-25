@@ -84,24 +84,26 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         </div>
       </div>
 
-      <button
-        onClick={() => manual(prev)}
-        aria-label="السابق"
-        className="absolute top-1/2 -translate-y-1/2 start-3 w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-colors z-10"
-      >
-        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M9 6l6 6-6 6" />
-        </svg>
-      </button>
-      <button
-        onClick={() => manual(next)}
-        aria-label="التالي"
-        className="absolute top-1/2 -translate-y-1/2 end-3 w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-colors z-10"
-      >
-        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M15 6l-6 6 6 6" />
-        </svg>
-      </button>
+      <div className="absolute bottom-4 start-4 flex items-center gap-2 z-10">
+        <button
+          onClick={() => manual(prev)}
+          aria-label="السابق"
+          className="w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-colors"
+        >
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </button>
+        <button
+          onClick={() => manual(next)}
+          aria-label="التالي"
+          className="w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-colors"
+        >
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
+      </div>
 
       <div className="absolute bottom-3 start-1/2 -translate-x-1/2 flex gap-1.5 z-10">
         {slides.map((_, i) => (
