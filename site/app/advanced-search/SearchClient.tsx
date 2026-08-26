@@ -156,9 +156,8 @@ export default function SearchClient({ index }: { index: Item[] }) {
         <input
           value={q}
           onChange={(e) => handleQChange(e.target.value)}
-          placeholder="ابحث بالاسم الإنجليزي أو الياباني..."
+          placeholder="ابحث..."
           className={selectCls + ' w-full'}
-          dir="ltr"
         />
         <select value={type} onChange={(e) => handleTypeChange(e.target.value)} className={selectCls}>
           <option value="">كل الأنواع</option>

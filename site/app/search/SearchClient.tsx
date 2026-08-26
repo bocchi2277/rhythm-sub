@@ -27,7 +27,6 @@ function SearchInner({ index }: { index: Item[] }) {
         onChange={(e) => setQ(e.target.value)}
         placeholder="اكتب اسم الأنمي..."
         className="w-full bg-card border border-edge rounded-2xl px-5 py-4 text-lg focus:outline-none focus:border-accent transition-colors"
-        dir="ltr"
       />
 
       {q.trim() && (
