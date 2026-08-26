@@ -69,7 +69,7 @@ export default function AnimeCard({
       </div>
       <h3
         dir="ltr"
-        className="clamp-2-hard p-3 text-sm font-medium leading-snug text-left group-hover:text-accent transition-colors"
+        className="clamp-2-hard pt-3 px-3 mb-3 text-sm font-medium leading-snug text-left group-hover:text-accent transition-colors"
       >
         {series.title}
       </h3>

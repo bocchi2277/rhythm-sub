@@ -132,6 +132,7 @@ body {
   -webkit-line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
+  line-height: 1.6 !important; /* IBM Plex Arabic glyphs run taller than leading-snug; 1.6 keeps 2 full lines inside the clamp box */
 }
 .prose-rtl p { margin-bottom: .75rem; line-height: 2; text-align: center; }
 .prose-rtl hr { border-color: var(--color-edge); margin: 1.25rem 0; }
