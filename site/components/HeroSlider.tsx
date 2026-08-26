@@ -46,7 +46,7 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       />
       <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/85 to-bg/40" />
 
-      <div className="relative p-6 md:p-10 grid md:grid-cols-[200px_1fr] gap-6 items-end min-h-[340px]">
+      <div className="relative p-6 pb-14 md:p-10 md:pb-12 grid md:grid-cols-[200px_1fr] gap-6 items-end min-h-[360px]">
         <div className="hidden md:block relative w-[200px] aspect-[2/3] rounded-2xl overflow-hidden border border-edge shadow-[0_20px_50px_rgba(0,0,0,.6)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={s.cover} alt={s.title} className="w-full h-full object-cover" />
@@ -84,43 +84,40 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         </div>
       </div>
 
-      {/* Unified Bottom Carousel Controls */}
-      <div className="absolute bottom-3 inset-x-0 flex items-center justify-center gap-3 z-10 px-4">
-        {/* Prev Arrow */}
+      {/* Desktop Prev / Next Buttons (Bottom Left) */}
+      <div className="hidden md:flex absolute bottom-6 left-6 items-center gap-2 z-10">
         <button
           onClick={() => manual(prev)}
           aria-label="السابق"
-          className="w-8 h-8 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shrink-0 active:scale-95"
+          className="w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all hover:scale-105"
         >
-          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-
-        {/* Pagination Dots */}
-        <div className="flex gap-1.5 items-center">
-          {slides.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => manual(() => setIdx(i))}
-              aria-label={`شريحة ${i + 1}`}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                i === idx ? 'w-5 bg-accent' : 'w-1.5 bg-muted/40 hover:bg-muted'
-              }`}
-            />
-          ))}
-        </div>
-
-        {/* Next Arrow */}
         <button
           onClick={() => manual(next)}
           aria-label="التالي"
-          className="w-8 h-8 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shrink-0 active:scale-95"
+          className="w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all hover:scale-105"
         >
-          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M9 5l7 7-7 7" />
           </svg>
         </button>
+      </div>
+
+      {/* Centered Pagination Dots */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+        {slides.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => manual(() => setIdx(i))}
+            aria-label={`شريحة ${i + 1}`}
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              i === idx ? 'w-6 bg-accent' : 'w-1.5 bg-muted/40 hover:bg-muted'
+            }`}
+          />
+        ))}
       </div>
     </section>
   );

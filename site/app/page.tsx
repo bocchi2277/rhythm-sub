@@ -23,9 +23,9 @@ function SectionTitle({ title, href }: { title: string; href?: string }) {
 
 export default function Home() {
   const heroSlides: HeroSlide[] = allSeries
-    .filter((s) => s.cover && s.synopsis)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 12)
+    .filter((s) => s.cover && s.synopsis && s.rating != null)
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    .slice(0, 10)
     .map((s) => ({
       slug: s.slug,
       title: s.title,
