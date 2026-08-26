@@ -84,28 +84,30 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-4 flex items-center gap-2 z-10">
-        <button
-          onClick={() => manual(prev)}
-          aria-label="السابق"
-          className="w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-colors"
-        >
-          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </button>
-        <button
-          onClick={() => manual(next)}
-          aria-label="التالي"
-          className="w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-colors"
-        >
-          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M15 6l-6 6 6 6" />
-          </svg>
-        </button>
-      </div>
+      {/* Left (Prev) Arrow Button */}
+      <button
+        onClick={() => manual(prev)}
+        aria-label="السابق"
+        className="absolute top-1/2 -translate-y-1/2 left-3 md:left-5 z-10 w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shadow-lg hover:scale-105"
+      >
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
 
-      <div className="absolute bottom-3 start-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+      {/* Right (Next) Arrow Button */}
+      <button
+        onClick={() => manual(next)}
+        aria-label="التالي"
+        className="absolute top-1/2 -translate-y-1/2 right-3 md:right-5 z-10 w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shadow-lg hover:scale-105"
+      >
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      {/* Pagination Dots */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
         {slides.map((_, i) => (
           <button
             key={i}

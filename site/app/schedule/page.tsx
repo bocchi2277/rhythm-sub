@@ -9,7 +9,13 @@ function weekdayOf(iso: string | null): number | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.getDay();
+  try {
+    const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Asia/Riyadh' }).format(d);
+    const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return dayMap[dayName] ?? d.getDay();
+  } catch {
+    return d.getDay();
+  }
 }
 
 export default function SchedulePage() {
