@@ -678,8 +678,8 @@ export const latestReleases = allSeries
   .sort((a, b) => {
     const dateCmp = String(b.ep.date ?? '').localeCompare(String(a.ep.date ?? ''));
     if (dateCmp !== 0) return dateCmp;
-    const numA = (a.ep.number ?? (a.ep.displayNum ? parseInt(a.ep.displayNum, 10) : 0)) || 0;
-    const numB = (b.ep.number ?? (b.ep.displayNum ? parseInt(b.ep.displayNum, 10) : 0)) || 0;
+    const numA = a.ep.number ?? 0;
+    const numB = b.ep.number ?? 0;
     if (numB !== numA) return numB - numA;
     return String(b.ep.slug).localeCompare(String(a.ep.slug));
   });

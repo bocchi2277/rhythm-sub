@@ -112,7 +112,7 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
             قائمة الحلقات والإصدارات ({s.episodes.length})
           </h2>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {[...s.episodes].reverse().map((ep) => (
+            {s.episodes.map((ep) => (
               <EpisodeRow key={`${ep.slug}-${ep.postId}`} ep={ep} typeText={s.type?.text} />
             ))}
           </div>
