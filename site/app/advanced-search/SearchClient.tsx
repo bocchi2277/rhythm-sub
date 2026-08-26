@@ -109,7 +109,11 @@ export default function SearchClient({ index }: { index: Item[] }) {
     [index]
   );
   const topGenres = useMemo(
-    () => Object.entries(genres).sort((a, b) => b[1] - a[1]),
+    () =>
+      Object.entries(genres).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      }),
     [genres]
   );
 
