@@ -56,11 +56,11 @@ export default function EpisodeRow({ ep, typeText }: { ep: Episode; typeText?: s
     <div className="bg-card border border-edge rounded-2xl p-3.5 hover:border-accent/40 transition-colors">
       {/* Top row: episode number badge + title + date */}
       <div className="flex items-center gap-3 mb-3">
-        <span className="btn-accent w-12 shrink-0 rounded-xl py-2 text-center">
-          {ep.displayNum && (
+        <span className="btn-accent min-w-12 px-2 shrink-0 rounded-xl py-2 text-center">
+          {ep.displayNum && /^\d+$/.test(ep.displayNum) && (
             <span className="block text-[10px] opacity-80 leading-none mb-0.5">الحلقة</span>
           )}
-          <span className={`block font-bold leading-none ${ep.displayNum ? 'text-base' : 'text-[11px]'}`}>{badgeText}</span>
+          <span className={`block font-bold leading-none ${ep.displayNum && /^\d+$/.test(ep.displayNum) ? 'text-base' : 'text-[11px]'}`}>{badgeText}</span>
         </span>
         <div className="min-w-0 flex-1">
           <Link

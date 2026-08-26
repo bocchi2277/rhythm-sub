@@ -138,24 +138,100 @@ function main() {
     }
     usedSlugs.add(slug);
 
-    const episodes = uniq.map((p) => ({
-      slug: p.slug,
-      url: p.url,
-      number: episodeNumberFrom(p),
-      label: p.downloads[0]?.label ?? p.title,
-      date: p.publishedAt,
-      rating: p.rating,
-      cover: p.cover,
-      synopsis: p.synopsis,
-      trailerYoutubeId: p.trailerYoutubeId,
-      qualities: p.downloads.flatMap((d) =>
-        d.qualities.map((q) => ({ quality: q.quality, links: q.links }))
-      ),
-      contentImages: p.contentImages,
-      postId: p.postId,
-      author: p.author,
-      contentHtml: p.contentHtml
-    }));
+function extractEpisodeMetadata(post) {
+  const title = post.title || '';
+  
+  // Check if range like '01 ~ 05' or '[01~12]'
+  const tildeMatch = title.match(/(\d{1,3})\s*[\~～]\s*(\d{1,3})(?:\s*END)?/i) || title.match(/\[(\d{1,3})\s*[\~～–-]\s*(\d{1,3})\]/);
+  if (tildeMatch) {
+    const isEnd = /END/i.test(title);
+    return {
+      displayNum: isEnd ? `${tildeMatch[1]}~${tildeMatch[2]} END` : `${tildeMatch[1]}~${tildeMatch[2]}`,
+      number: parseInt(tildeMatch[2], 10),
+      label: title
+    };
+  }
+  
+  // Check if volume like 'Vol.01' or 'Vol.1'
+  const volMatch = title.match(/Vol\.?\s*(\d{1,2})(?:\s*END)?/i);
+  if (volMatch) {
+    const isEnd = /END/i.test(title);
+    return {
+      displayNum: isEnd ? `Vol.${volMatch[1]} END` : `Vol.${volMatch[1]}`,
+      number: parseInt(volMatch[1], 10) * 100,
+      label: title
+    };
+  }
+
+  // Check if full BD batch like 'Absolute Duo - BD' or 'BD'
+  if (/\bBD\b|Blu-ray/i.test(post.type?.text) || (/\bBD\b|Blu-ray/i.test(title) && !title.match(/[-–]\s*\d{1,3}\s*$/))) {
+    return {
+      displayNum: 'BD',
+      number: 9999,
+      label: title
+    };
+  }
+
+  // Check Movie / OVA / ONA / Special
+  if (/movie|فيلم/i.test(title) || post.type?.text === 'Movie') {
+    return { displayNum: 'فيلم', number: 1, label: title };
+  }
+  if (/OVA/i.test(title) || post.type?.text === 'OVA') {
+    const ovaNum = title.match(/OVA\s*(\d+)/i);
+    return { displayNum: ovaNum ? `OVA ${ovaNum[1]}` : 'OVA', number: ovaNum ? parseInt(ovaNum[1], 10) : 1, label: title };
+  }
+  if (/ONA/i.test(title) || post.type?.text === 'ONA') {
+    const onaNum = title.match(/[-–]\s*(\d+)/);
+    return { displayNum: onaNum ? `ONA ${onaNum[1]}` : 'ONA', number: onaNum ? parseInt(onaNum[1], 10) : 1, label: title };
+  }
+
+  // Single episode
+  const epNum = episodeNumberFrom(post);
+  if (epNum != null) {
+    const isEnd = /END|الأخيرة/i.test(title);
+    return {
+      displayNum: isEnd ? `${epNum} END` : String(epNum),
+      number: epNum,
+      label: title
+    };
+  }
+
+  return { displayNum: null, number: null, label: title };
+}
+
+    const episodes = uniq.map((p) => {
+      const meta = extractEpisodeMetadata(p);
+      return {
+        slug: p.slug,
+        url: p.url,
+        number: meta.number,
+        displayNum: meta.displayNum,
+        label: meta.label,
+        date: p.publishedAt,
+        rating: p.rating,
+        cover: p.cover,
+        synopsis: p.synopsis,
+        trailerYoutubeId: p.trailerYoutubeId,
+        qualities: p.downloads.flatMap((d) =>
+          d.qualities.map((q) => ({ quality: q.quality, links: q.links }))
+        ),
+        contentImages: p.contentImages,
+        postId: p.postId,
+        author: p.author,
+        contentHtml: p.contentHtml
+      };
+    });
+
+    episodes.sort((a, b) => {
+      if (a.date && b.date) {
+        const dCmp = String(b.date).localeCompare(String(a.date));
+        if (dCmp !== 0) return dCmp;
+      }
+      const numA = a.number ?? 0;
+      const numB = b.number ?? 0;
+      if (numB !== numA) return numB - numA;
+      return String(b.slug).localeCompare(String(a.slug));
+    });
 
     const staff = {};
     for (const p of uniq) {

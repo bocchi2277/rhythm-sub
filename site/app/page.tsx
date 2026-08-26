@@ -62,7 +62,7 @@ export default function Home() {
                 title: series.title,
                 label: ep.label || series.title,
                 image: img(validContentImg ?? ep.cardImage ?? ep.cover),
-                badge: ep.displayNum ? `الحلقة ${ep.displayNum}` : null,
+                badge: ep.displayNum ? (/^\d+$/.test(ep.displayNum) ? `الحلقة ${ep.displayNum}` : ep.displayNum) : null,
                 date: ep.date,
               };
             })

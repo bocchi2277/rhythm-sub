@@ -1,5 +1,5 @@
 # Rhythm-Sub scrape & model report
-Generated: 2026-08-26T16:30:36.510Z
+Generated: 2026-08-26T19:38:01.867Z
 
 ## Totals
 - Source posts scraped: **992 / 992** (0 failures)
