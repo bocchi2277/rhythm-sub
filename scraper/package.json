@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "login": "node src/login.mjs",
     "crawl": "node src/crawl.mjs",
-    "scrape": "node src/scrape.mjs"
+    "scrape": "node src/scrape.mjs",
+    "sync": "node src/sync.mjs",
+    "sync:push": "node src/sync.mjs --push"
   },
   "keywords": [],
   "author": "",

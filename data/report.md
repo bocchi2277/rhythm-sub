@@ -1,12 +1,12 @@
 # Rhythm-Sub scrape & model report
-Generated: 2026-08-26T21:20:38.845Z
+Generated: 2026-08-26T22:37:25.176Z
 
 ## Totals
-- Source posts scraped: **992 / 992** (0 failures)
+- Source posts scraped: **994 / 994** (0 failures)
 - Series entities: **423**
-- Episode/release entries: **992**
+- Episode/release entries: **994**
 - Series with >1 release: 121
-- Unique images referenced: **2053**
+- Unique images referenced: **2057**
 
 ## Field coverage (series level)
 | Field | Coverage |
@@ -19,7 +19,7 @@ Generated: 2026-08-26T21:20:38.845Z
 | relatedSeries (franchise links) | 262/423 |
 
 ## Sample verification (5 random series)
-- **Clevatess II: Majuu no Ou to Itsuwari no Yuusha Denshou** (2026, TV), eps:4, genres:[Action,Fantasy,School]
+- **Clevatess II: Majuu no Ou to Itsuwari no Yuusha Denshou** (2026, TV), eps:5, genres:[Action,Fantasy,School]
 - **Arifureta Shokugyou de Sekai Saikyou 2nd Season – 12 END** (2022, TV), eps:12, genres:[Action,Adventure,Fantasy]
 - **Aa! Megami-sama!: Chichaitte Koto wa Benri da ne** (1998, DVD), eps:1, genres:[Comedy,Magic,Supernatural]
 - **Papa no Iukoto wo Kikinasai! OVA** (2013, DVD), eps:1, genres:[Comedy,Romance,Slice of Life]

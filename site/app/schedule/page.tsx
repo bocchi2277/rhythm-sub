@@ -13,14 +13,15 @@ function weekdayOf(iso: string | null): number | null {
 }
 
 export default function SchedulePage() {
-  /* Dynamic schedule based on the most recent releases sorted by date */
-  const recentSeries = [...allSeries]
+  /* Only active ongoing series (الأعمال المستمرة الجارية فقط) */
+  const ongoingSeries = allSeries
+    .filter((s) => /ongoing|airing|currently/i.test(s.status ?? ''))
+    .filter((s) => !/END$/i.test(s.title) && !/movie|film|فيلم/i.test(s.type?.text ?? ''))
     .filter((s) => s.episodes.length > 0 && s.lastReleaseAt)
-    .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')))
-    .slice(0, 45);
+    .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
 
   const byDay = new Map<number, typeof allSeries>();
-  for (const s of recentSeries) {
+  for (const s of ongoingSeries) {
     const latestEp = s.episodes[0];
     const wd = weekdayOf(latestEp?.date ?? s.lastReleaseAt);
     if (wd == null) continue;
