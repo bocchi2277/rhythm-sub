@@ -1,5 +1,5 @@
 # Rhythm-Sub scrape & model report
-Generated: 2026-08-26T22:37:25.176Z
+Generated: 2026-08-26T23:07:22.979Z
 
 ## Totals
 - Source posts scraped: **994 / 994** (0 failures)
@@ -16,7 +16,7 @@ Generated: 2026-08-26T22:37:25.176Z
 | rating | 423/423 |
 | staff | 421/423 |
 | downloads | 423/423 |
-| relatedSeries (franchise links) | 262/423 |
+| relatedSeries (franchise links) | 258/423 |
 
 ## Sample verification (5 random series)
 - **Clevatess II: Majuu no Ou to Itsuwari no Yuusha Denshou** (2026, TV), eps:5, genres:[Action,Fantasy,School]

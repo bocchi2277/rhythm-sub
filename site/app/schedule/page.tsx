@@ -13,11 +13,18 @@ function weekdayOf(iso: string | null): number | null {
 }
 
 export default function SchedulePage() {
-  /* Only active ongoing seasonal series (الأعمال المستمرة الجارية فقط) */
+  /* Only active ongoing episodic series releasing weekly in current broadcast period (الأعمال المستمرة الجارية فقط) */
   const ongoingSeries = allSeries
     .filter((s) => /ongoing|airing|currently/i.test(s.status ?? ''))
     .filter((s) => !/END$/i.test(s.title) && !/movie|film|فيلم/i.test(s.type?.text ?? ''))
-    .filter((s) => s.episodes.length > 0 && s.lastReleaseAt && Date.now() - new Date(s.lastReleaseAt).getTime() < 120 * 24 * 3600 * 1000)
+    .filter((s) => !/BD|Vol\.|Blu-ray/i.test(s.title))
+    .filter((s) => {
+      const latest = s.episodes[0];
+      if (!latest) return false;
+      if (/BD|Vol\./i.test(latest.displayNum ?? '')) return false;
+      if (!latest.date) return false;
+      return Date.now() - new Date(latest.date).getTime() < 21 * 24 * 3600 * 1000;
+    })
     .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
 
   const byDay = new Map<number, typeof allSeries>();
