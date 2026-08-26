@@ -38,7 +38,7 @@ export default function SeriesPage() {
                       </span>
                     )}
                   </div>
-                  <p dir="ltr" className="p-2.5 text-xs font-medium leading-snug line-clamp-2 text-left group-hover:text-accent transition-colors">
+                  <p dir="ltr" className="clamp-2-hard p-2.5 text-xs font-medium leading-snug text-left group-hover:text-accent transition-colors" title={s.title}>
                     {s.title}
                   </p>
                 </Link>

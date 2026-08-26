@@ -250,13 +250,17 @@ function extractEpisodeMetadata(post) {
 
     const guideUrls = [...new Set(uniq.flatMap((p) => (p.seriesGuide ?? []).map((g) => g.url)))];
 
+const COVER_OVERRIDES = {
+  'high-school-dxd-ova': 'https://rhythm-sub.com/wp-content/uploads/2020/01/94594db3230322d9f735cde56495f6a9.jpg',
+};
+
     const series = {
       key: newest.malUrl ? `mal:${newest.malUrl}` : `slug:${asciiSlug(normalizeSlug(newest.slug))}`,
       malUrl: pickLatest(uniq, (p) => p.malUrl),
       slug,
       title: (newest.title ?? '').replace(/\s*[-–]\s*\d{1,4}\s*$/, '').trim() || newest.title,
       altTitles: pickLatest(uniq, (p) => p.altTitles),
-      cover: pickLatest(uniq, (p) => p.cover),
+      cover: COVER_OVERRIDES[slug] ?? pickLatest(uniq, (p) => p.cover),
       genres: pickLatest(uniq, (p) => p.genres) ?? [],
       status: pickLatest(uniq, (p) => p.status),
       studio: pickLatest(uniq, (p) => p.studio),
