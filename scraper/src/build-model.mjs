@@ -290,13 +290,36 @@ const COVER_OVERRIDES = {
     }
   }
 
+const STOPWORDS = new Set([
+  'anime', 'season', 'the', 'movie', 'ova', 'vol', 'part', 'shounen', 'shoujo',
+  'isekai', 'yuusha', 'tame', 'kamo', 'danshi', 'koukou', 'gakkou', 'tokubetsu',
+  'hen', 'kara', 'shin', 'ore', 'boku', 'watashi', 'uchi', 'kono', 'sono', 'ano',
+  'shikashitara', 'special', 'specials', 'blu', 'ray', 'dvd', 'film'
+]);
+
+function areDistinctlyRelated(titleA, titleB) {
+  const wordsA = (titleA || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  const wordsB = (titleB || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  return wordsA.some((w) => wordsB.includes(w));
+}
+
+  const seriesByKey = new Map(seriesList.map((s) => [s.key, s]));
+
   for (const s of seriesList) {
     const fromGuides = [...new Set(s.seriesGuideUrls.map((u) => u.replace(/\/+$/, '').split('/').pop()).filter(Boolean))]
       .map((sl) => slugIndex.get(asciiSlug(normalizeSlug(sl))))
       .filter((k) => k && k !== s.key);
     const fKey = getFranchiseKey(s.slug);
     const family = fKey ? (franchiseMap.get(fKey) ?? []).filter((k) => k !== s.key) : [];
-    s.relatedSeries = [...new Set([...fromGuides, ...family])].slice(0, 8);
+    const candidates = [...new Set([...fromGuides, ...family])];
+
+    s.relatedSeries = candidates
+      .filter((k) => {
+        const other = seriesByKey.get(k);
+        if (!other) return false;
+        return areDistinctlyRelated(s.title, other.title);
+      })
+      .slice(0, 8);
     delete s.seriesGuideUrls;
   }
 
