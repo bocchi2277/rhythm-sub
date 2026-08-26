@@ -51,14 +51,21 @@ export default function Home() {
         <SectionTitle title="آخر الحلقات" />
         <LatestEpisodes
           items={
-            recent.map(({ series, ep }): EpisodeCardItem => ({
-              slug: series.slug,
-              title: series.title,
-              label: ep.label || series.title,
-              image: img(ep.cardImage ?? ep.cover),
-              badge: ep.displayNum ? (/^\d+$/.test(ep.displayNum) ? `الحلقة ${ep.displayNum}` : `الحلقة ${ep.displayNum}`) : null,
-              date: ep.date
-            }))
+            recent.map(({ series, ep }): EpisodeCardItem => {
+              /* Pick a unique per-episode image: prefer contentImages (episode screenshots)
+                 over the shared series cover to avoid duplicate images in the grid */
+              const validContentImg = ep.contentImages?.find(
+                (u) => u && !/icons8|download-from-cloud/i.test(u) && !/\.svg$/i.test(u)
+              );
+              return {
+                slug: series.slug,
+                title: series.title,
+                label: ep.label || series.title,
+                image: img(validContentImg ?? ep.cardImage ?? ep.cover),
+                badge: ep.displayNum ? `الحلقة ${ep.displayNum}` : null,
+                date: ep.date,
+              };
+            })
           }
         />
       </section>
@@ -96,7 +103,7 @@ export default function Home() {
         </aside>
       </section>
 
-      <section className="mt-14 grid sm:grid-cols-2 gap-5 fade-up">
+      <section className="mt-14 max-w-4xl mx-auto grid sm:grid-cols-2 gap-6 fade-up">
         <a
           href="https://www.paypal.me/shahabalbalushi1995"
           target="_blank"
