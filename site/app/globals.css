@@ -159,8 +159,6 @@ body::after {
   -webkit-line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
-  line-height: 1.5 !important;
-  max-height: 3em !important; /* 2 lines × 1.5 line-height = 3em hard cap */
   text-overflow: ellipsis !important;
   word-break: break-word !important;
 }
