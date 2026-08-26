@@ -84,40 +84,43 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         </div>
       </div>
 
-      {/* Left (Prev) Arrow Button */}
-      <button
-        onClick={() => manual(prev)}
-        aria-label="السابق"
-        className="absolute top-1/2 -translate-y-1/2 left-3 md:left-5 z-10 w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shadow-lg hover:scale-105"
-      >
-        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <path d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
+      {/* Unified Bottom Carousel Controls */}
+      <div className="absolute bottom-3 inset-x-0 flex items-center justify-center gap-3 z-10 px-4">
+        {/* Prev Arrow */}
+        <button
+          onClick={() => manual(prev)}
+          aria-label="السابق"
+          className="w-8 h-8 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shrink-0 active:scale-95"
+        >
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
 
-      {/* Right (Next) Arrow Button */}
-      <button
-        onClick={() => manual(next)}
-        aria-label="التالي"
-        className="absolute top-1/2 -translate-y-1/2 right-3 md:right-5 z-10 w-10 h-10 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shadow-lg hover:scale-105"
-      >
-        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <path d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
+        {/* Pagination Dots */}
+        <div className="flex gap-1.5 items-center">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => manual(() => setIdx(i))}
+              aria-label={`شريحة ${i + 1}`}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === idx ? 'w-5 bg-accent' : 'w-1.5 bg-muted/40 hover:bg-muted'
+              }`}
+            />
+          ))}
+        </div>
 
-      {/* Pagination Dots */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-        {slides.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => manual(() => setIdx(i))}
-            aria-label={`شريحة ${i + 1}`}
-            className={`h-1.5 rounded-full transition-all duration-300 ${
-              i === idx ? 'w-6 bg-accent' : 'w-1.5 bg-muted/50 hover:bg-muted'
-            }`}
-          />
-        ))}
+        {/* Next Arrow */}
+        <button
+          onClick={() => manual(next)}
+          aria-label="التالي"
+          className="w-8 h-8 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-all shrink-0 active:scale-95"
+        >
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
     </section>
   );
