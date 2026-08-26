@@ -1,12 +1,12 @@
 # Rhythm-Sub scrape & model report
-Generated: 2026-08-26T20:37:18.568Z
+Generated: 2026-08-26T21:20:38.845Z
 
 ## Totals
 - Source posts scraped: **992 / 992** (0 failures)
 - Series entities: **423**
 - Episode/release entries: **992**
 - Series with >1 release: 121
-- Unique images referenced: **2054**
+- Unique images referenced: **2053**
 
 ## Field coverage (series level)
 | Field | Coverage |
