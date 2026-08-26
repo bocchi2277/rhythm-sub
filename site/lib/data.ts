@@ -323,7 +323,13 @@ export const franchises: { name: string; works: Series[] }[] = [...familyMap.ent
   .map(([, works]) => {
     const sorted = [...works].sort((a, b) => a.title.length - b.title.length);
     const words = sorted[0].title.replace(/[:–-].*$/, '').trim();
-    return { name: words || sorted[0].title, works: [...works].sort((a, b) => (a.year ?? 0) - (b.year ?? 0)) };
+    const seenCovers = new Set<string>();
+    const distinctWorks = works.filter((w) => {
+      if (w.cover && seenCovers.has(w.cover)) return false;
+      if (w.cover) seenCovers.add(w.cover);
+      return true;
+    });
+    return { name: words || sorted[0].title, works: distinctWorks.sort((a, b) => (a.year ?? 0) - (b.year ?? 0)) };
   })
   .sort((a, b) => b.works.length - a.works.length);
 

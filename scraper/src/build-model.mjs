@@ -95,13 +95,14 @@ function main() {
   const groups = new Map();
   for (const p of posts) {
     let key;
-    if (p.malUrl) key = `mal:${p.malUrl.split('?')[0].replace(/\/$/, '')}`;
+    const malIdMatch = p.malUrl ? p.malUrl.match(/\/anime\/(\d+)/) : null;
+    if (malIdMatch) key = `mal:${malIdMatch[1]}`;
     else key = `slug:${normalizeSlug(p.slug)}`;
 
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(p);
 
-    if (p.malUrl) {
+    if (malIdMatch) {
       const slugKey = `slug:${normalizeSlug(p.slug)}`;
       if (groups.has(slugKey)) {
         groups.get(key).push(...groups.get(slugKey));
@@ -269,7 +270,7 @@ function extractEpisodeMetadata(post) {
       staff,
       seriesGuideUrls: guideUrls,
       lastReleaseAt: newest.publishedAt,
-      episodes: episodes.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9))
+      episodes
     };
 
     seriesList.push(series);
@@ -293,6 +294,22 @@ function extractEpisodeMetadata(post) {
     const family = fKey ? (franchiseMap.get(fKey) ?? []).filter((k) => k !== s.key) : [];
     s.relatedSeries = [...new Set([...fromGuides, ...family])].slice(0, 8);
     delete s.seriesGuideUrls;
+  }
+
+  // Resolve duplicate covers across series in the same franchise
+  const seenCovers = new Map();
+  for (const s of seriesList) {
+    if (!s.cover) continue;
+    if (seenCovers.has(s.cover)) {
+      const allImages = s.episodes.flatMap((e) => e.contentImages ?? []);
+      const altImg = allImages.find((u) => u && !seenCovers.has(u) && !/icons8|download-from-cloud/i.test(u) && !/\.svg$/i.test(u) && !/background|gif/i.test(u));
+      if (altImg) {
+        s.cover = altImg;
+        seenCovers.set(altImg, s.slug);
+      }
+    } else {
+      seenCovers.set(s.cover, s.slug);
+    }
   }
 
   seriesList.sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));

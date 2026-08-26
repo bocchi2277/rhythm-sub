@@ -1,26 +1,26 @@
 # Rhythm-Sub scrape & model report
-Generated: 2026-08-26T19:38:01.867Z
+Generated: 2026-08-26T20:37:18.568Z
 
 ## Totals
 - Source posts scraped: **992 / 992** (0 failures)
-- Series entities: **426**
+- Series entities: **423**
 - Episode/release entries: **992**
-- Series with >1 release: 120
-- Unique images referenced: **2056**
+- Series with >1 release: 121
+- Unique images referenced: **2054**
 
 ## Field coverage (series level)
 | Field | Coverage |
 |---|---|
-| cover | 426/426 |
-| synopsis | 285/426 |
-| rating | 426/426 |
-| staff | 424/426 |
-| downloads | 426/426 |
-| relatedSeries (franchise links) | 265/426 |
+| cover | 423/423 |
+| synopsis | 284/423 |
+| rating | 423/423 |
+| staff | 421/423 |
+| downloads | 423/423 |
+| relatedSeries (franchise links) | 262/423 |
 
 ## Sample verification (5 random series)
 - **Clevatess II: Majuu no Ou to Itsuwari no Yuusha Denshou** (2026, TV), eps:4, genres:[Action,Fantasy,School]
-- **Youjo Senki Movie: Manner Eizou Blu-ray** (2019, BD), eps:1, genres:[Isekai,Military,Parody]
+- **Arifureta Shokugyou de Sekai Saikyou 2nd Season – 12 END** (2022, TV), eps:12, genres:[Action,Adventure,Fantasy]
 - **Aa! Megami-sama!: Chichaitte Koto wa Benri da ne** (1998, DVD), eps:1, genres:[Comedy,Magic,Supernatural]
-- **Papa no Iukoto wo Kikinasai!: Pokkapoka** (2012, BD), eps:2, genres:[Comedy,Romance,Slice of Life]
-- **Kamisama Hajimemashita: Kako-hen** (2015, DVD), eps:1, genres:[Comedy,Demons,Fantasy]
+- **Papa no Iukoto wo Kikinasai! OVA** (2013, DVD), eps:1, genres:[Comedy,Romance,Slice of Life]
+- **High School DxD** (2012, BD), eps:1, genres:[Comedy,Demons,Ecchi]
