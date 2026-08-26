@@ -64,29 +64,223 @@ function loadJson(rel: string) {
 
 const raw: Series[] = loadJson('series.json');
 
-const merged = [...raw];
+// ── Split foreign-work posts filed under the wrong series ──────────────────
+// Source-data corruption happens: a scraper group keyed to one MAL entry can
+// absorb posts of a DIFFERENT show (real case: 8 "Kono Subarashii Sekai ni
+// Bakuen wo!" volume posts + 1 Mushoku-Tensei episode under a single object,
+// with the Bakuen MAL key but the Mushoku slug/title). Episodes whose title
+// shares ZERO meaningful tokens with the series' dominant title cannot be the
+// same work → regroup them into their own synthetic series.
+const tokenizeWork = (t: string): string[] =>
+  t.toLowerCase().match(/[a-z0-9\u0600-\u06FF]{3,}/g) ?? [];
+const workStem = (t: string) => {
+  let l = String(t).trim();
+  let prev: string | null = null;
+  while (prev !== l) {
+    prev = l;
+    l = l.replace(/(\s*[-~]\s*)(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
+    l = l.replace(/\s+(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
+    l = l.replace(/[\s\-~]+$/, '');
+  }
+  return l.trim();
+};
+// Case-preserving title for a stem: drop the trailing episode/vol token
+// (with or without a dash: "Show - 05" and "Show Vol.02" both reduce to "Show").
+const workTitle = (t: string) =>
+  t
+    .replace(/(\s*[-~]\s*)(?:Vol\.?\s*)?\d{1,4}(\s*(?:END|الأخيرة)?)?\s*$/i, '')
+    .replace(/\s+(?:Vol\.?\s*)?\d{1,4}(\s*(?:END|الأخيرة)?)?\s*$/i, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+function splitForeignWorks(seriesList: Series[]): Series[] {
+  const synthetics: Series[] = [];
+  const knownSlugs = new Set(seriesList.map((s) => s.slug));
+  for (const s of seriesList) {
+    // Text that survives bracket stripping; a fully-tagged label ("[HEX][1080p
+    // HEVC AAC]") falls back to its download-row name, which carries the real
+    // work title.
+    const textOf = (e: Episode) => {
+      const stripped = e.label.replace(/\[[^\]]*\]/g, '').trim();
+      return stripped || e.qualities[0]?.quality?.trim() || e.label || '';
+    };
+    if (s.episodes.length < 3) continue;
+    const stems = s.episodes.map((e) => workStem(textOf(e)).toLowerCase());
+    const counts = new Map<string, number>();
+    for (const st of stems) counts.set(st, (counts.get(st) ?? 0) + 1);
+    let anchor = '';
+    let anchorN = 0;
+    for (const [st, n] of counts) {
+      if (n > anchorN) {
+        anchor = st;
+        anchorN = n;
+      }
+    }
+    // No clear majority → ambiguous mixture, leave untouched rather than guess.
+    // A foreign blob can OUTNUMBER the host's own posts (8 Bakuen volumes vs 10
+    // Mushoku episodes), so require only a plurality, and only split when the
+    // minority side has ≥2 cards (never exile a lone differently-titled post).
+    if (anchorN < Math.max(3, s.episodes.length / 4)) continue;
+    // Host stem = the stem matching the series' OWN title when one exists
+    // (users on /anime/<slug> expect the titled work); otherwise the dominant
+    // stem. Compare episodes against the HOST stem alone — never union the
+    // series title into the whitelist, or the minority titled work becomes
+    // un-exilable and the split silently no-ops.
+    const titleTokens = tokenizeWork(s.title ?? '');
+    let hostStem = '';
+    for (const st of counts.keys()) {
+      if (tokenizeWork(st).some((w) => titleTokens.includes(w))) {
+        hostStem = st;
+        break;
+      }
+    }
+    if (!hostStem) hostStem = anchor;
+    const hostTokens = new Set(tokenizeWork(hostStem));
+    const foreign = s.episodes.filter((e) => {
+      const tk = tokenizeWork(workStem(textOf(e)));
+      return tk.length > 0 && !tk.some((w) => hostTokens.has(w));
+    });
+    if (foreign.length < 2 || foreign.length >= s.episodes.length) continue;
+    const groups = new Map<string, Episode[]>();
+    for (const e of foreign) {
+      const st = workStem(textOf(e)).toLowerCase();
+      if (!groups.has(st)) groups.set(st, []);
+      groups.get(st)!.push(e);
+    }
+    const foreignSet = new Set(foreign);
+    s.episodes = s.episodes.filter((e) => !foreignSet.has(e));
+    // The host kept the majority content: retitle it from that majority so the
+    // page heading matches what the page actually lists. When the host kept
+    // the title-matching minority instead, derive the title from its own
+    // remaining episodes (also strips raw-title stickers like "Part 2 – 10 ~ 11").
+    const anchorRep = s.episodes.find((e) => workStem(textOf(e)).toLowerCase() === anchor);
+    if (anchorRep) {
+      s.title = workTitle(textOf(anchorRep));
+    } else {
+      const ownTitle = workTitle(textOf(s.episodes[0]));
+      if (ownTitle) s.title = ownTitle;
+    }
+    for (const [, eps] of groups) {
+      const base = workTitle(textOf(eps[0]));
+      let slug = slugifySeries(base) || `${s.slug}-x`;
+      while (knownSlugs.has(slug)) slug += '-x';
+      knownSlugs.add(slug);
+      synthetics.push({
+        key: `${s.key}:x:${slug}`,
+        malUrl: null,
+        slug,
+        title: base,
+        altTitles: null,
+        cover: eps.find((e) => e.cover)?.cover ?? null,
+        genres: [],
+        status: 'Ongoing',
+        studio: null,
+        year: null,
+        season: null,
+        type: s.type,
+        episodesCount: null,
+        rating: null,
+        synopsis: '',
+        trailerYoutubeId: null,
+        staff: {},
+        relatedSeries: [],
+        lastReleaseAt: null,
+        episodes: eps
+      });
+    }
+  }
+  return [...seriesList, ...synthetics];
+}
+
+const merged = splitForeignWorks(raw);
 
 function displayNumber(ep: { label: string; number: number | null; slug: string }): string | null {
-  const range = ep.label.match(/(\d{1,4})\s*[~\-]\s*(\d{1,4})(?!\d)/);
-  if (range && /~/.test(ep.label)) return `${parseInt(range[1], 10)}~${parseInt(range[2], 10)}`;
-  const inLabel = ep.label.match(/(?:-|\s|#|الحلقة\s)(\d{1,4})(?!\d)\s*(?:END|الأخيرة)?\s*$/i);
+  // Ignore scraper noise that can trail the number ("[HEXHASH]", "LEAKED") so a
+  // title like "Series - 01 [CC80CD66] LEAKED" still yields a badge.
+  const label = ep.label.replace(/\[[0-9A-Fa-f]{6,12}\]/g, ' ').replace(/\s*LEAKED\s*$/i, '');
+  const range = label.match(/(\d{1,4})\s*[~\-]\s*(\d{1,4})(?!\d)/);
+  if (range && /~/.test(label)) return `${parseInt(range[1], 10)}~${parseInt(range[2], 10)}`;
+  const inLabel = label.match(/(?:-|\s|#|الحلقة\s)(\d{1,4})(?!\d)\s*(?:END|الأخيرة)?\s*$/i);
   if (inLabel) return String(parseInt(inLabel[1], 10));
   return ep.number != null ? String(ep.number) : null;
 }
 
 function safeSynopsis(s: string | null | undefined): string {
   if (!s) return '';
-  const t = String(s)
+  let t = String(s)
     .replace(/^قصة\s*الأنمي\s*[:：]?\s*/i, '')
+    .replace(/^ملخص\s*[^\n]{0,80}[:：]\s*/i, '')
     .trim();
-  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات)\s*:/.test(t)) return '';
+
+  // Strip leading greetings/announcements/lines if followed by actual synopsis paragraphs
+  t = t.replace(/^(?:#فضفضة[^\n]*\n+|السلام\s*عليكم[^\n]*\n+|مرحبا[^\n]*\n+|أهلًا\s*بالجميع[^\n]*\n+|تادا[^\n]*\n+|مبارك\s*عليكم[^\n]*\n+|نقد[مك]\s*لكم[^\n]*\n+|يسرنا[^\n]*\n+|يُ?سعدني[^\n]*\n+|يسعدنا[^\n]*\n+|نعود\s*لكم[^\n]*\n+|رجعنا\s*لكم[^\n]*\n+|ه?آي\s*مينا[^\n]*\n+|الموسم\s*[^\n]*\n+|Anime Info[^\n]*\n+)+/i, '').trim();
+
+  // If text is pure metadata or staff lines
+  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات|Anime Info|TL|TLC|QC|TS|Encode)\s*:/i.test(t)) return '';
+  if (/Anime Info\s*:\s*MAL/i.test(t)) return '';
+
+  // Chatter & release-announcement starters
+  const CHATTER_RE = /^(?:نقد[مك]\s*لكم|يسرنا|يُ?سعدني|يسعدنا|نعود\s*لكم|رجعنا\s*لكم|ه?آي\s*مينا|وأخيرًا\s*خلصنا|خلصنا\s*صيانة|السلام\s*عليكم|مرحبا|أهلًا\s*بالجميع|تادا|مبارك\s*عليكم|إصدار\s*بديل|حلقت[اي]ن?\s*(?:أوفا|خاصة)|حلقة\s*خاصة|الحلقة\s*(?:الـ?\d+|الأخيرة|الثالثة|الصفرية)|نصل\s*(?:ل?ختام|إلى\s*الحلقة|إلى\s*نهاية)|وها\s*نحن\s*نختتم|ننهي\s*رحلتنا|انتهيت\s*أخيرًا|يوه\s*شيء|وذهب\s*شهر|يا\s*لعزة\s*هذا\s*الشهر|الفولي?وم\s*(?:الأول|الثاني|الثالث|الرابع|الخامس|الأخير)|وإلى\s*هنا\s*نصل|هناك\s*بعد\s*التعديلات|ونفجر\s*بيها|أكيد\s*عارفنه|#فضفضة|مشروع\s*مصغر|هذه\s*الأوفا|حلقات\s*خاصة|أوفا\s*تكمل|بفضل\s*الله\s*ثم|معلومة\s*عن\s*العمل|بعد\s*مضي\s*أكثر\s*من\s*10\s*أعوام)/i;
+
+  if (CHATTER_RE.test(t) && (t.length < 250 || !/تدور\s*احداث|تدور\s*القصة|يحكي|تبدأ|تتحدث|طالب\s*ثانوية|فتاة|شاب|عالم|مدينة|يعيش/i.test(t))) {
+    return '';
+  }
+
+  if (t.length < 25) return '';
   return t;
+}
+
+// Strip scraper noise: [HEXHASH] groups, leftover empty groups, doubled opening
+// brackets ("[CC80CD66][[VHS 1080p AAC]" → "VHS 1080p AAC") and a fully-wrapping
+// outer pair ("[720p AAC]" → "720p AAC"). Meaningful tags ([HARD-SUB], [01~04])
+// are preserved. Must run AFTER batch-split detection, which needs raw hashes.
+function cleanTags(input: string): string {
+  let s = input.replace(/\[[0-9A-Fa-f]{6,12}\]/g, ' ');
+  s = s.replace(/\[\s*\]/g, ' ');
+  while (/\[\[/.test(s)) s = s.replace(/\[\[/g, '[');
+  s = s.trim();
+  const wrapped = s.match(/^\[([^[\]]+)\]$/);
+  if (wrapped) s = wrapped[1];
+  return s.replace(/\s{2,}/g, ' ').trim();
+}
+
+function cleanLabel(input: string): string {
+  return cleanTags(input)
+    .replace(/\s*LEAKED\s*$/i, '')
+    .trim();
+}
+
+function cleanEpisodeText(ep: Episode): void {
+  ep.label = cleanLabel(ep.label);
+  for (const q of ep.qualities) {
+    q.quality = cleanTags(q.quality);
+    for (const l of q.links) l.name = cleanTags(l.name);
+  }
 }
 
 for (const s of merged) {
   s.synopsis = safeSynopsis(s.synopsis);
+  const cleanedStaff: Record<string, string[]> = {};
+  for (const [rawRole, names] of Object.entries(s.staff ?? {})) {
+    const role = rawRole.trim();
+    if (/^(https?|ftp|www|anime\s*info|http)$/i.test(role) || /[:/.\\]/.test(role)) continue;
+    const validNames = (names ?? [])
+      .map((n) => String(n).trim())
+      .filter((n) => n && !/^(https?:|\/\/|www\.)/i.test(n) && !/twitter\.com|t\.me|discord/i.test(n) && n.length <= 90);
+    if (validNames.length > 0) cleanedStaff[role] = validNames;
+  }
+  s.staff = cleanedStaff;
   const expanded: Episode[] = [];
   for (const e of s.episodes) {
+    // A post whose ENTIRE title is scraper tags ("[3CE53AB8][1080p HEVC AAC]")
+    // carries no work name at all: rebuild it from the series title plus the
+    // episode number embedded in the post slug, so users never see a bare
+    // quality string as a card title.
+    const strippedLabel = e.label.replace(/\[[^\]]*\]/g, '').trim();
+    if (!strippedLabel && s.title) {
+      const m = e.slug.match(/-(\d{1,4})(?:-end)?$/);
+      if (m) e.label = `${s.title} - ${parseInt(m[1], 10)}`;
+    }
     e.contentImages = e.contentImages ?? [];
     const distinct = e.contentImages.find((u) => u && u !== e.cover);
     e.cardImage = distinct ?? e.cover ?? null;
@@ -121,7 +315,11 @@ for (const s of merged) {
       /(\s*[-~]\s*)\d{1,4}(\s*(?:END|الأخيرة)?)\s*$/i.test(e.label)
         ? e.label.replace(/(\s*[-~]\s*)\d{1,4}(\s*(?:END|الأخيرة)?)\s*$/i, `$1${n}$2`)
         : `${e.label} - ${n}`;
-    if (hashBatch || e.qualities.length === hashed.length + 1) {
+    // GUARD: hashed.length >= 1 — with zero hashed rows the arithmetic below is
+    // trivially true (1 === 0+1) and hashed.forEach would emit ZERO cards,
+    // silently deleting ordinary single-row posts (lost episodes 7/12 in
+    // undead-unluck). Never enter the splitter without at least one hashed file.
+    if (hashBatch || (hashed.length >= 1 && e.qualities.length === hashed.length + 1)) {
       // Split each distinct hashed file into its own episode card; any trailing un-hashed
       // row (usually the batch Torrent) rides along on the FIRST card.
       const torrentRows = e.qualities.filter((q) => !/\[[0-9A-Fa-f]{6,12}\]/.test(q.quality));
@@ -179,54 +377,131 @@ for (const s of merged) {
   // Stem = label with ALL trailing number/Vol tokens removed (loop handles "Vol.03 - 12",
   // "Alya-san 01", "Kiroku Vol.1" — with or without a dash before the number).
   const stemOf = (ep: Episode) => {
-    let l = ep.label.trim().toLowerCase();
+    // Strip scraper noise FIRST: a trailing "[HEXHASH]" or "LEAKED" would block
+    // the trailing-number loop below and defeat re-release merging.
+    let l = ep.label
+      .replace(/\[[0-9A-Fa-f]{6,12}\]/g, ' ')
+      .replace(/\[\s*\]/g, ' ')
+      .replace(/\s*LEAKED\s*$/i, '')
+      .trim()
+      .toLowerCase();
     let prev: string | null = null;
     while (prev !== l) {
       prev = l;
       l = l.replace(/(\s*[-~]\s*)(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
       l = l.replace(/\s+(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
+      // Punctuation-insensitive: "Re:Dive" ≡ "Re Dive", a trailing "!" must not
+      // block matching ("...Bakuen wo!" weekly vs "...Bakuen wo! Vol.03").
+      l = l.replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
       l = l.replace(/[\s\-~]+$/, '');
     }
     return l;
   };
-  const byNumber = new Map<number, Episode>();
-  const finalList: Episode[] = [];
   // Key on the EFFECTIVE badge number (displayNum — what the user actually sees), not the
   // raw scraped `number` field which is sometimes wrong (e.g. "Movie 1" post tagged 2).
   const badgeOf = (ep: Episode): number | null => {
     if (ep.displayNum && /^\d{1,4}$/.test(ep.displayNum)) return parseInt(ep.displayNum, 10);
     return ep.number != null && ep.number <= 9999 ? ep.number : null;
   };
+  // Cluster ALL cards sharing one badge number by title stem, THEN merge each
+  // cluster. A naive first-wins map breaks with three same-number cards
+  // (season-1 weekly + season-2 weekly + its Blu-ray re-release): the third card
+  // must match the second, not whichever card happened to arrive first.
+  const byNumber = new Map<number, Episode[]>();
+  const nullCards: Episode[] = [];
   for (const ep of expanded) {
     const key = badgeOf(ep);
-    if (key == null) {
-      finalList.push(ep);
-      continue;
-    }
-    const existing = byNumber.get(key);
-    if (!existing) {
-      byNumber.set(key, ep);
-      finalList.push(ep);
-    } else if (stemOf(existing) === stemOf(ep)) {
-      const newer = (ep.date ?? '') > (existing.date ?? '') ? ep : existing;
-      const older = newer === ep ? existing : ep;
-      newer.qualities = [...newer.qualities, ...older.qualities];
-      const idx = finalList.indexOf(older);
-      if (idx >= 0) finalList[idx] = newer;
-    } else {
-      // Same number but different titles (data-level duplicate posts): keep both.
-      finalList.push(ep);
+    if (key == null) nullCards.push(ep);
+    else {
+      if (!byNumber.has(key)) byNumber.set(key, []);
+      byNumber.get(key)!.push(ep);
     }
   }
+  const skip = new Set<Episode>();
+  // One-edit tolerance ("Neppuu" vs "Neppu" source typos) — used ONLY for
+  // badge-less movie/special clusters, never for numbered episodes.
+  const lev1 = (a: string, b: string) => {
+    if (a === b) return true;
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0;
+    let j = 0;
+    let edits = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) {
+        i++;
+        j++;
+        continue;
+      }
+      if (++edits > 1) return false;
+      if (a.length === b.length) {
+        i++;
+        j++;
+      } else {
+        j++;
+      }
+    }
+    edits += a.length - i + (b.length - j);
+    return edits <= 1;
+  };
+  const collapse = (cards: Episode[], fuzzy = false) => {
+    const groups: { st: string; items: Episode[] }[] = [];
+    for (const c of cards) {
+      const st = stemOf(c);
+      const hit = fuzzy ? groups.find((g) => lev1(g.st, st)) : groups.find((g) => g.st === st);
+      if (hit) {
+        hit.items.push(c);
+      } else {
+        groups.push({ st, items: [c] });
+      }
+    }
+    for (const group of groups) {
+      if (group.items.length < 2) continue;
+      // Newest publication wins; equal dates → the later-arrived card (BD/volume
+      // posts are appended after the weekly ones in the source feed).
+      let wi = 0;
+      for (let i = 1; i < group.items.length; i++) {
+        if ((group.items[i].date ?? '') >= (group.items[wi].date ?? '')) wi = i;
+      }
+      const winner = group.items[wi];
+      for (let i = 0; i < group.items.length; i++) {
+        if (i === wi) continue;
+        winner.qualities.push(...group.items[i].qualities);
+        skip.add(group.items[i]);
+      }
+    }
+  };
+  // No badge (movies/specials): still merge exact-title duplicates — two
+  // "Mind Game" posts are the same film published twice. Fuzzy matching also
+  // catches one-letter source typos ("Neppuu" vs "Neppu").
+  collapse(nullCards, true);
+  for (const cards of byNumber.values()) collapse(cards);
+  const finalList = expanded.filter((ep) => !skip.has(ep));
+  // Scraper-noise cleanup ([HEXHASH] tags, LEAKED, doubled brackets) runs LAST so
+  // batch-split detection above still sees the raw hashes it depends on.
+  for (const ep of finalList) cleanEpisodeText(ep);
   s.episodes = finalList;
+}
+
+const GENERIC_PREFIXES = new Set(['yuusha', 'princess', 'isekai', 'mahou', 'shin', 'super', 'strike', 'kono', 'seishun', 'ore', 'watashi', 'boku', 'toaru', 'gekijouban']);
+
+function getFranchiseKey(slug: string): string | null {
+  const parts = slug.split('-').filter(Boolean);
+  if (parts.length >= 2) {
+    const two = parts.slice(0, 2).join('-');
+    if (!GENERIC_PREFIXES.has(parts[0]) || parts.length >= 3) {
+      if (GENERIC_PREFIXES.has(parts[0])) return parts.slice(0, 3).join('-');
+      return two;
+    }
+  }
+  return null;
 }
 
 const familyMap = new Map<string, Series[]>();
 for (const s of merged) {
-  const token = s.slug.split('-')[0];
-  if (token.length >= 4) {
-    if (!familyMap.has(token)) familyMap.set(token, []);
-    familyMap.get(token)!.push(s);
+  const key = getFranchiseKey(s.slug);
+  if (key) {
+    if (!familyMap.has(key)) familyMap.set(key, []);
+    familyMap.get(key)!.push(s);
   }
 }
 
@@ -289,6 +564,7 @@ for (const r of teamReleases) {
     slug: `${slug}-${r.episodeNumber ?? Date.now()}`,
     url: `/anime/${slug}/`,
     number: r.episodeNumber != null ? Number(r.episodeNumber) : null,
+    displayNum: r.episodeNumber != null ? String(r.episodeNumber) : null,
     label: String(r.label),
     date: r.date ? `${r.date}T00:00:00+03:00` : null,
     rating: null,
@@ -399,7 +675,21 @@ export const currentProjects = curatedProjectSlugs.length
 
 export const latestReleases = allSeries
   .flatMap((s) => s.episodes.map((e) => ({ series: s, ep: e })))
-  .sort((a, b) => String(b.ep.date ?? '').localeCompare(String(a.ep.date ?? '')));
+  .sort((a, b) => {
+    const dateCmp = String(b.ep.date ?? '').localeCompare(String(a.ep.date ?? ''));
+    if (dateCmp !== 0) return dateCmp;
+    const numA = (a.ep.number ?? (a.ep.displayNum ? parseInt(a.ep.displayNum, 10) : 0)) || 0;
+    const numB = (b.ep.number ?? (b.ep.displayNum ? parseInt(b.ep.displayNum, 10) : 0)) || 0;
+    if (numB !== numA) return numB - numA;
+    return String(b.ep.slug).localeCompare(String(a.ep.slug));
+  });
+
+export function formatWorksCount(count: number): string {
+  if (count === 1) return 'عمل واحد';
+  if (count === 2) return 'عملان';
+  if (count >= 3 && count <= 10) return `${count} أعمال`;
+  return `${count} عمل`;
+}
 
 export const ongoing = allSeries.filter((s) => /ongoing/i.test(s.status ?? ''));
 

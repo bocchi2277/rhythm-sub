@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type Item = {
   slug: string;
@@ -27,12 +28,77 @@ const SORTS = [
   { key: 'year', label: 'سنة الإصدار' }
 ] as const;
 
+type SortKey = (typeof SORTS)[number]['key'];
+
 export default function SearchClient({ index }: { index: Item[] }) {
-  const [q, setQ] = useState('');
-  const [type, setType] = useState('');
-  const [status, setStatus] = useState('');
-  const [genre, setGenre] = useState('');
-  const [sort, setSort] = useState<(typeof SORTS)[number]['key']>('recent');
+  const searchParams = useSearchParams();
+
+  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
+  const [type, setType] = useState(() => searchParams.get('type') ?? '');
+  const [status, setStatus] = useState(() => searchParams.get('status') ?? '');
+  const [genre, setGenre] = useState(() => searchParams.get('genre') ?? '');
+  const [sort, setSort] = useState<SortKey>(() => (searchParams.get('sort') as SortKey) || 'recent');
+
+  // Sync state to URL params
+  const updateUrl = useCallback((newParams: { q?: string; type?: string; status?: string; genre?: string; sort?: string }) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (newParams.q) url.searchParams.set('q', newParams.q);
+    else url.searchParams.delete('q');
+
+    if (newParams.type) url.searchParams.set('type', newParams.type);
+    else url.searchParams.delete('type');
+
+    if (newParams.status) url.searchParams.set('status', newParams.status);
+    else url.searchParams.delete('status');
+
+    if (newParams.genre) url.searchParams.set('genre', newParams.genre);
+    else url.searchParams.delete('genre');
+
+    if (newParams.sort && newParams.sort !== 'recent') url.searchParams.set('sort', newParams.sort);
+    else url.searchParams.delete('sort');
+
+    window.history.replaceState(null, '', url.pathname + (url.search ? url.search : ''));
+  }, []);
+
+  // Listen to browser Back / Forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      setQ(sp.get('q') ?? '');
+      setType(sp.get('type') ?? '');
+      setStatus(sp.get('status') ?? '');
+      setGenre(sp.get('genre') ?? '');
+      setSort((sp.get('sort') as SortKey) || 'recent');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleQChange = (val: string) => {
+    setQ(val);
+    updateUrl({ q: val, type, status, genre, sort });
+  };
+
+  const handleTypeChange = (val: string) => {
+    setType(val);
+    updateUrl({ q, type: val, status, genre, sort });
+  };
+
+  const handleStatusChange = (val: string) => {
+    setStatus(val);
+    updateUrl({ q, type, status: val, genre, sort });
+  };
+
+  const handleGenreChange = (val: string) => {
+    setGenre(val);
+    updateUrl({ q, type, status, genre: val, sort });
+  };
+
+  const handleSortChange = (val: SortKey) => {
+    setSort(val);
+    updateUrl({ q, type, status, genre, sort: val });
+  };
 
   const types = useMemo(() => [...new Set(index.map((i) => i.type).filter(Boolean))].sort(), [index]);
   const genres = useMemo(
@@ -89,23 +155,23 @@ export default function SearchClient({ index }: { index: Item[] }) {
       <div className="glass border border-edge rounded-2xl p-5 grid gap-4 md:grid-cols-[2fr_1fr_1fr_1fr] mb-3">
         <input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => handleQChange(e.target.value)}
           placeholder="ابحث بالاسم الإنجليزي أو الياباني..."
           className={selectCls + ' w-full'}
           dir="ltr"
         />
-        <select value={type} onChange={(e) => setType(e.target.value)} className={selectCls}>
+        <select value={type} onChange={(e) => handleTypeChange(e.target.value)} className={selectCls}>
           <option value="">كل الأنواع</option>
           {types.map((t) => (
             <option key={t}>{t}</option>
           ))}
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className={selectCls}>
+        <select value={status} onChange={(e) => handleStatusChange(e.target.value)} className={selectCls}>
           <option value="">الحالة</option>
           <option>مستمر</option>
           <option>مكتمل</option>
         </select>
-        <select value={genre} onChange={(e) => setGenre(e.target.value)} className={selectCls}>
+        <select value={genre} onChange={(e) => handleGenreChange(e.target.value)} className={selectCls}>
           <option value="">كل التصنيفات</option>
           {topGenres.map(([g, n]) => (
             <option key={g} value={g}>
@@ -120,7 +186,7 @@ export default function SearchClient({ index }: { index: Item[] }) {
         {SORTS.map((s) => (
           <button
             key={s.key}
-            onClick={() => setSort(s.key)}
+            onClick={() => handleSortChange(s.key)}
             className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
               sort === s.key ? 'btn-accent' : 'bg-card border border-edge hover:border-accent'
             }`}

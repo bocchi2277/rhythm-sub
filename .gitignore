@@ -11,3 +11,8 @@ data/*.log
 out/
 site/scripts/preview-server.mjs
 site/scripts/review-shots/
+_*.png
+*.txt
+site/*.txt
+site/scripts/*.txt
+site/scripts/*.cjs
