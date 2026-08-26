@@ -51,9 +51,38 @@ function cleanSynopsis(s) {
     .replace(/^قصة\s*الأنمي\s*[:：]?\s*/i, '')
     .replace(/^ملخص\s*[^\n]{0,80}[:：]\s*/i, '')
     .trim();
-  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات)\s*:/.test(t)) return '';
-  if (t.length < 15) return '';
+
+  // Strip leading greetings/announcements/lines if followed by actual synopsis paragraphs
+  t = t.replace(/^(?:#فضفضة[^\n]*\n+|السلام\s*عليكم[^\n]*\n+|مرحبا[^\n]*\n+|أهلًا\s*بالجميع[^\n]*\n+|تادا[^\n]*\n+|مبارك\s*عليكم[^\n]*\n+|نقدم\s*لكم[^\n]*\n+|نقدك\s*لكم[^\n]*\n+|يسرنا[^\n]*\n+|يسعدنا[^\n]*\n+|نعود\s*لكم[^\n]*\n+|رجعنا\s*لكم[^\n]*\n+|ه?آي\s*مينا[^\n]*\n+|الموسم\s*[^\n]*\n+|Anime Info[^\n]*\n+)+/i, '').trim();
+
+  // If text is pure metadata or staff lines
+  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات|Anime Info|TL|TLC|QC|TS|Encode)\s*:/i.test(t)) return '';
+  if (/Anime Info\s*:\s*MAL/i.test(t)) return '';
+
+  // Chatter & release-announcement starters
+  const CHATTER_RE = /^(?:نقد[مك]\s*لكم|يسرنا|يُ?سعدني|يسعدنا|نعود\s*لكم|رجعنا\s*لكم|ه?آي\s*مينا|وأخيرًا\s*خلصنا|خلصنا\s*صيانة|السلام\s*عليكم|مرحبا|أهلًا\s*بالجميع|تادا|مبارك\s*عليكم|إصدار\s*بديل|حلقت[اي]ن?\s*(?:أوفا|خاصة)|حلقة\s*خاصة|الحلقة\s*(?:الـ?\d+|الأخيرة|الثالثة|الصفرية)|نصل\s*(?:ل?ختام|إلى\s*الحلقة|إلى\s*نهاية)|وها\s*نحن\s*نختتم|ننهي\s*رحلتنا|انتهيت\s*أخيرًا|يوه\s*شيء|وذهب\s*شهر|يا\s*لعزة\s*هذا\s*الشهر|الفولي?وم\s*(?:الأول|الثاني|الثالث|الرابع|الخامس|الأخير)|وإلى\s*هنا\s*نصل|هناك\s*بعد\s*التعديلات|ونفجر\s*بيها|أكيد\s*عارفنه|#فضفضة|مشروع\s*مصغر|هذه\s*الأوفا|حلقات\s*خاصة|أوفا\s*تكمل|بفضل\s*الله\s*ثم|معلومة\s*عن\s*العمل|بعد\s*مضي\s*أكثر\s*من\s*10\s*أعوام)/i;
+
+  if (CHATTER_RE.test(t) && (t.length < 250 || !/تدور\s*احداث|تدور\s*القصة|يحكي|تبدأ|تتحدث|طالب\s*ثانوية|فتاة|شاب|عالم|مدينة|يعيش/i.test(t))) {
+    return '';
+  }
+
+  if (t.length < 25) return '';
   return t;
+}
+
+const INVALID_ROLE_RE = /^(https?|ftp|www|anime\s*info|http)$/i;
+const GENERIC_PREFIXES = new Set(['yuusha', 'princess', 'isekai', 'mahou', 'shin', 'super', 'strike', 'kono', 'seishun', 'ore', 'watashi', 'boku', 'toaru', 'gekijouban']);
+
+function getFranchiseKey(slug) {
+  const parts = slug.split('-').filter(Boolean);
+  if (parts.length >= 2) {
+    const two = parts.slice(0, 2).join('-');
+    if (!GENERIC_PREFIXES.has(parts[0]) || parts.length >= 3) {
+      if (GENERIC_PREFIXES.has(parts[0])) return parts.slice(0, 3).join('-');
+      return two;
+    }
+  }
+  return null;
 }
 
 function main() {
@@ -130,10 +159,15 @@ function main() {
 
     const staff = {};
     for (const p of uniq) {
-      for (const [role, names] of Object.entries(p.staff ?? {})) {
-        if (/^anime info$/i.test(role.trim())) continue;
+      for (const [rawRole, names] of Object.entries(p.staff ?? {})) {
+        const role = rawRole.trim();
+        if (INVALID_ROLE_RE.test(role) || /[:/.\\]/.test(role)) continue;
+        const validNames = (names ?? [])
+          .map((n) => String(n).trim())
+          .filter((n) => n && !/^(https?:|\/\/|www\.)/i.test(n) && !/twitter\.com|t\.me|discord/i.test(n) && n.length <= 90);
+        if (!validNames.length) continue;
         staff[role] = staff[role] ?? [];
-        for (const n of names) if (!staff[role].includes(n)) staff[role].push(n);
+        for (const n of validNames) if (!staff[role].includes(n)) staff[role].push(n);
       }
     }
 
@@ -166,12 +200,12 @@ function main() {
     for (const p of uniq) slugIndex.set(asciiSlug(normalizeSlug(p.slug)), series.key);
   }
 
-  const familyMap = new Map();
+  const franchiseMap = new Map();
   for (const s of seriesList) {
-    const token = s.slug.split('-')[0];
-    if (token.length >= 4) {
-      if (!familyMap.has(token)) familyMap.set(token, []);
-      familyMap.get(token).push(s.key);
+    const key = getFranchiseKey(s.slug);
+    if (key) {
+      if (!franchiseMap.has(key)) franchiseMap.set(key, []);
+      franchiseMap.get(key).push(s.key);
     }
   }
 
@@ -179,8 +213,8 @@ function main() {
     const fromGuides = [...new Set(s.seriesGuideUrls.map((u) => u.replace(/\/+$/, '').split('/').pop()).filter(Boolean))]
       .map((sl) => slugIndex.get(asciiSlug(normalizeSlug(sl))))
       .filter((k) => k && k !== s.key);
-    const token = s.slug.split('-')[0];
-    const family = token.length >= 4 ? (familyMap.get(token) ?? []).filter((k) => k !== s.key) : [];
+    const fKey = getFranchiseKey(s.slug);
+    const family = fKey ? (franchiseMap.get(fKey) ?? []).filter((k) => k !== s.key) : [];
     s.relatedSeries = [...new Set([...fromGuides, ...family])].slice(0, 8);
     delete s.seriesGuideUrls;
   }

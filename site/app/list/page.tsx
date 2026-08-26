@@ -27,8 +27,7 @@ export default function ListPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 mt-6">
-      <h1 className="text-2xl font-bold mb-2">قائمة [A-Z]</h1>
-      <p className="text-muted text-sm mb-5">{allSeries.length} عمل مترجم من فريق Rhythm-Sub</p>
+      <h1 className="text-2xl font-bold mb-6">قائمة [A-Z]</h1>
 
       <nav className="sticky top-[68px] z-30 glass border border-edge rounded-2xl p-2 flex flex-wrap gap-1 mb-8">
         {present.map((l) => (

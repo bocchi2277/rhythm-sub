@@ -1,13 +1,12 @@
 import Link from 'next/link';
-import { franchises, img } from '@/lib/data';
+import { franchises, formatWorksCount, img } from '@/lib/data';
 
 export const metadata = { title: 'السلاسل' };
 
 export default function SeriesPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 mt-6">
-      <h1 className="text-2xl font-bold mb-2">السلاسل</h1>
-      <p className="text-muted text-sm mb-8">{franchises.length} سلسلة مرتبطة — كل أعمال كل سلسلة في مكان واحد</p>
+      <h1 className="text-2xl font-bold mb-8">السلاسل</h1>
 
       <div className="space-y-10">
         {franchises.map((f) => (
@@ -15,7 +14,7 @@ export default function SeriesPage() {
             <h2 className="text-lg font-bold mb-4 flex items-center gap-3">
               <span className="w-1.5 h-5 rounded-full btn-accent block" />
               <span dir="ltr">{f.name}</span>
-              <span className="text-muted text-sm font-normal">({f.works.length} أعمال)</span>
+              <span className="text-muted text-sm font-normal">({formatWorksCount(f.works.length)})</span>
             </h2>
             <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 -mx-1 px-1">
               {f.works.map((s) => (

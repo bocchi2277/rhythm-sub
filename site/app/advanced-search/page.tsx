@@ -1,10 +1,10 @@
+import { Suspense } from 'react';
 import { allSeries, img } from '@/lib/data';
 import SearchClient from './SearchClient';
 
 export const metadata = { title: 'البحث المتقدم' };
 
-export default function AdvancedSearchPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
-  void searchParams;
+export default function AdvancedSearchPage() {
   const index = allSeries.map((s) => ({
     slug: s.slug,
     title: s.title,
@@ -20,5 +20,9 @@ export default function AdvancedSearchPage({ searchParams }: { searchParams: Pro
     lastReleaseAt: s.lastReleaseAt
   }));
 
-  return <SearchClient index={index} />;
+  return (
+    <Suspense fallback={<div className="max-w-7xl mx-auto px-4 mt-6 text-muted">جاري تحميل البحث...</div>}>
+      <SearchClient index={index} />
+    </Suspense>
+  );
 }

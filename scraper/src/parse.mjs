@@ -12,12 +12,15 @@ function textWithBreaks($, el) {
 }
 
 const ROLE_RE = /^([A-Za-z][A-Za-z &+'-]{0,24})\s*[:：]/;
+const INVALID_ROLE_RE = /^(https?|ftp|www|anime\s*info|http)$/i;
 
 function parseStaffLine(rawLine) {
   const clean = rawLine.replace(/\s+/g, ' ').trim();
   const m = clean.match(ROLE_RE);
   if (!m) return null;
   const role = m[1].trim();
+  if (INVALID_ROLE_RE.test(role) || /[:/.\\]/.test(role)) return null;
+
   let rest = clean.slice(m[0].length);
 
   const nextRole = rest.slice(1).match(new RegExp(`[A-Za-z][A-Za-z &+'-]{0,24}\\s*[:：]`, 'g'));
@@ -31,7 +34,7 @@ function parseStaffLine(rawLine) {
   }
 
   const value = rest.replace(/\s+/g, ' ').trim();
-  if (!role || !value || /^https?:/.test(value) || value.length > 90) return null;
+  if (!role || !value || /^(https?:|\/\/|www\.)/i.test(value) || /twitter\.com|t\.me|discord/i.test(value) || value.length > 90) return null;
   return { role, value };
 }
 

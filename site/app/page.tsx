@@ -96,18 +96,18 @@ export default function Home() {
         </aside>
       </section>
 
-      <section className="mt-14 grid sm:grid-cols-2 gap-4 fade-up">
+      <section className="mt-14 grid sm:grid-cols-2 gap-5 fade-up">
         <a
           href="https://www.paypal.me/shahabalbalushi1995"
           target="_blank"
           rel="noopener noreferrer"
-          className="block rounded-2xl overflow-hidden h-52 [&:hover>img]:scale-[1.02]"
+          className="block rounded-2xl overflow-hidden aspect-[2/1] border border-edge hover:border-accent/50 transition-colors [&:hover>img]:scale-[1.02]"
           aria-label="كن راعيًا لنا"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/banners/sponsor.jpg" alt="كن راعيًا لنا" loading="lazy" className="w-full h-full object-cover transition-transform duration-300" />
         </a>
-        <Link href="/support/" className="block rounded-2xl overflow-hidden h-52 [&:hover>img]:scale-[1.02]" aria-label="الدعم الفني">
+        <Link href="/support/" className="block rounded-2xl overflow-hidden aspect-[2/1] border border-edge hover:border-accent/50 transition-colors [&:hover>img]:scale-[1.02]" aria-label="الدعم الفني">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/banners/tech-support.jpg" alt="الدعم الفني" loading="lazy" className="w-full h-full object-cover transition-transform duration-300" />
         </Link>

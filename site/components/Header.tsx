@@ -30,7 +30,7 @@ export function Logo({ size = 'h-10' }: { size?: string }) {
 
 function SearchForm({ className = '' }: { className?: string }) {
   return (
-    <form action="/search" className={`relative ${className}`}>
+    <form action="/search" method="GET" className={`relative ${className}`}>
       <input
         type="search"
         name="q"
@@ -38,10 +38,16 @@ function SearchForm({ className = '' }: { className?: string }) {
         aria-label="بحث"
         className="w-full bg-card border border-edge rounded-xl ps-9 pe-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors"
       />
-      <svg viewBox="0 0 24 24" className="absolute start-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="11" cy="11" r="7" />
-        <path d="M21 21l-4.3-4.3" />
-      </svg>
+      <button
+        type="submit"
+        aria-label="تنفيذ البحث"
+        className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-colors grid place-items-center p-0.5"
+      >
+        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M21 21l-4.3-4.3" />
+        </svg>
+      </button>
     </form>
   );
 }
