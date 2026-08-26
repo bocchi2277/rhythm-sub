@@ -270,216 +270,29 @@ for (const s of merged) {
     if (validNames.length > 0) cleanedStaff[role] = validNames;
   }
   s.staff = cleanedStaff;
-  const expanded: Episode[] = [];
   for (const e of s.episodes) {
-    // A post whose ENTIRE title is scraper tags ("[3CE53AB8][1080p HEVC AAC]")
-    // carries no work name at all: rebuild it from the series title plus the
-    // episode number embedded in the post slug, so users never see a bare
-    // quality string as a card title.
     const strippedLabel = e.label.replace(/\[[^\]]*\]/g, '').trim();
     if (!strippedLabel && s.title) {
       const m = e.slug.match(/-(\d{1,4})(?:-end)?$/);
       if (m) e.label = `${s.title} - ${parseInt(m[1], 10)}`;
     }
     e.contentImages = e.contentImages ?? [];
-    const distinct = e.contentImages.find((u) => u && u !== e.cover);
+    const distinct = e.contentImages.find((u) => u && u !== e.cover && !/icons8|download-from-cloud/i.test(u));
     e.cardImage = distinct ?? e.cover ?? null;
-    e.displayNum = displayNumber(e);
-
-    const range = e.displayNum?.match(/^(\d{1,4})~(\d{1,4})$/);
-    // ── UNIVERSAL episodic-batch rule ─────────────────────────────────────────
-    // A post with >=4 quality rows that all share the SAME quality string but carry
-    // DISTINCT hex hashes = N consecutive episode FILES in one post (Revive's 01..04
-    // card pattern). This holds regardless of how the post is titled:
-    //   "Vol.06 - 21"  → episodes 21..24   (volume convention: X after the dash)
-    //   "Anime - 01"   → episodes start..start+N-1 (season batch labeled by first ep)
-    // Multi-quality re-encodes of ONE episode/movie never look like this, because their
-    // rows differ in the quality string itself (1080p vs 720p vs HEVC...).
-    const baseQuality = (q: { quality: string }) => q.quality.replace(/\[[0-9A-Fa-f]{6,12}\]/g, '').trim();
-    const hashed = e.qualities.filter((q) => /\[[0-9A-Fa-f]{6,12}\]/.test(q.quality));
-    const distinctHashes = new Set(hashed.map((q) => (q.quality.match(/\[[0-9A-Fa-f]{6,12}\]/) ?? [''])[0]));
-    const hashBatch =
-      hashed.length >= 4 && distinctHashes.size >= 4 && new Set(hashed.map(baseQuality)).size === 1;
-    const singleBatch =
-      e.displayNum &&
-      /^\d{1,4}$/.test(e.displayNum) &&
-      !hashBatch &&
-      e.qualities.length >= 6;
-    // Explicit range in the label wins ("Vol.NN - X", "01~12"); degenerate "N - N" ignored.
-    const labelRange = e.label.match(/(?:^|[^0-9])(\d{1,4})\s*[-~]\s*(\d{1,4})(?!\d)/);
-    const explicitStart =
-      labelRange && parseInt(labelRange[1], 10) < parseInt(labelRange[2], 10)
-        ? parseInt(labelRange[2], 10)
-        : null;
-    const perCardTitle = (n: number) =>
-      /(\s*[-~]\s*)\d{1,4}(\s*(?:END|الأخيرة)?)\s*$/i.test(e.label)
-        ? e.label.replace(/(\s*[-~]\s*)\d{1,4}(\s*(?:END|الأخيرة)?)\s*$/i, `$1${n}$2`)
-        : `${e.label} - ${n}`;
-    // GUARD: hashed.length >= 1 — with zero hashed rows the arithmetic below is
-    // trivially true (1 === 0+1) and hashed.forEach would emit ZERO cards,
-    // silently deleting ordinary single-row posts (lost episodes 7/12 in
-    // undead-unluck). Never enter the splitter without at least one hashed file.
-    if (hashBatch || (hashed.length >= 1 && e.qualities.length === hashed.length + 1)) {
-      // Split each distinct hashed file into its own episode card; any trailing un-hashed
-      // row (usually the batch Torrent) rides along on the FIRST card.
-      const torrentRows = e.qualities.filter((q) => !/\[[0-9A-Fa-f]{6,12}\]/.test(q.quality));
-      const start = explicitStart ?? (e.displayNum ? parseInt(e.displayNum, 10) : null);
-      if (start == null) {
-        expanded.push(e);
-      } else {
-        const baseTitle = perCardTitle(start); // strip the trailing number once for the series-level title
-        const stem = baseTitle.replace(/(\s*[-~]\s*)\d{1,4}(\s*(?:END|الأخيرة)?)?\s*$/i, '').trim();
-        hashed.forEach((q, i) => {
-          expanded.push({
-            ...e,
-            number: start + i,
-            displayNum: String(start + i),
-            label: `${stem} - ${start + i}`,
-            qualities: i === 0 ? [q, ...torrentRows] : [q],
-            slug: `${e.slug}-p${start + i}`
-          });
-        });
-      }
-    } else if (singleBatch && e.displayNum) {
-      const start = parseInt(e.displayNum, 10);
-      e.qualities.forEach((q, i) => {
-        expanded.push({
-          ...e,
-          number: start + i,
-          displayNum: String(start + i),
-          qualities: [q],
-          slug: `${e.slug}-p${start + i}`
-        });
-      });
-    } else if (explicitStart != null && !hashBatch && !singleBatch && e.qualities.length >= 3) {
-      // Range-style batch without per-file hashes (e.g. "[01~04][BD]" posts): one card per episode.
-      e.qualities.forEach((q, i) => {
-        expanded.push({
-          ...e,
-          number: explicitStart + i,
-          displayNum: String(explicitStart + i),
-          label: perCardTitle(explicitStart + i),
-          qualities: [q],
-          slug: `${e.slug}-p${explicitStart + i}`
-        });
-      });
-    } else {
-      expanded.push(e);
-    }
+    cleanEpisodeText(e);
   }
-  expanded.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
 
-  // ── Deduplicate re-releases (TV weekly post + BD volume batch of the same episode) ──
-  // When two cards carry the SAME episode number AND the same title stem, they are the
-  // same content published twice (weekly WEB release → remastered BD volume). Merge into
-  // ONE card: newest label/date wins, older download rows stack beneath for choice.
-  // Corrupt source numbers (e.g. 204 from "2"+"04") never match a sane stem, so they stay.
-  // Stem = label with ALL trailing number/Vol tokens removed (loop handles "Vol.03 - 12",
-  // "Alya-san 01", "Kiroku Vol.1" — with or without a dash before the number).
-  const stemOf = (ep: Episode) => {
-    // Strip scraper noise FIRST: a trailing "[HEXHASH]" or "LEAKED" would block
-    // the trailing-number loop below and defeat re-release merging.
-    let l = ep.label
-      .replace(/\[[0-9A-Fa-f]{6,12}\]/g, ' ')
-      .replace(/\[\s*\]/g, ' ')
-      .replace(/\s*LEAKED\s*$/i, '')
-      .trim()
-      .toLowerCase();
-    let prev: string | null = null;
-    while (prev !== l) {
-      prev = l;
-      l = l.replace(/(\s*[-~]\s*)(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
-      l = l.replace(/\s+(?:vol\.?\s*)?\d{1,4}(\s*(?:end|الأخيرة)?)?$/i, '').trim();
-      // Punctuation-insensitive: "Re:Dive" ≡ "Re Dive", a trailing "!" must not
-      // block matching ("...Bakuen wo!" weekly vs "...Bakuen wo! Vol.03").
-      l = l.replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
-      l = l.replace(/[\s\-~]+$/, '');
+  // Sort episodes DESCENDING (latest/highest at top of page, episode 1 at bottom)
+  s.episodes.sort((a, b) => {
+    if (a.date && b.date) {
+      const dCmp = String(b.date).localeCompare(String(a.date));
+      if (dCmp !== 0) return dCmp;
     }
-    return l;
-  };
-  // Key on the EFFECTIVE badge number (displayNum — what the user actually sees), not the
-  // raw scraped `number` field which is sometimes wrong (e.g. "Movie 1" post tagged 2).
-  const badgeOf = (ep: Episode): number | null => {
-    if (ep.displayNum && /^\d{1,4}$/.test(ep.displayNum)) return parseInt(ep.displayNum, 10);
-    return ep.number != null && ep.number <= 9999 ? ep.number : null;
-  };
-  // Cluster ALL cards sharing one badge number by title stem, THEN merge each
-  // cluster. A naive first-wins map breaks with three same-number cards
-  // (season-1 weekly + season-2 weekly + its Blu-ray re-release): the third card
-  // must match the second, not whichever card happened to arrive first.
-  const byNumber = new Map<number, Episode[]>();
-  const nullCards: Episode[] = [];
-  for (const ep of expanded) {
-    const key = badgeOf(ep);
-    if (key == null) nullCards.push(ep);
-    else {
-      if (!byNumber.has(key)) byNumber.set(key, []);
-      byNumber.get(key)!.push(ep);
-    }
-  }
-  const skip = new Set<Episode>();
-  // One-edit tolerance ("Neppuu" vs "Neppu" source typos) — used ONLY for
-  // badge-less movie/special clusters, never for numbered episodes.
-  const lev1 = (a: string, b: string) => {
-    if (a === b) return true;
-    if (Math.abs(a.length - b.length) > 1) return false;
-    let i = 0;
-    let j = 0;
-    let edits = 0;
-    while (i < a.length && j < b.length) {
-      if (a[i] === b[j]) {
-        i++;
-        j++;
-        continue;
-      }
-      if (++edits > 1) return false;
-      if (a.length === b.length) {
-        i++;
-        j++;
-      } else {
-        j++;
-      }
-    }
-    edits += a.length - i + (b.length - j);
-    return edits <= 1;
-  };
-  const collapse = (cards: Episode[], fuzzy = false) => {
-    const groups: { st: string; items: Episode[] }[] = [];
-    for (const c of cards) {
-      const st = stemOf(c);
-      const hit = fuzzy ? groups.find((g) => lev1(g.st, st)) : groups.find((g) => g.st === st);
-      if (hit) {
-        hit.items.push(c);
-      } else {
-        groups.push({ st, items: [c] });
-      }
-    }
-    for (const group of groups) {
-      if (group.items.length < 2) continue;
-      // Newest publication wins; equal dates → the later-arrived card (BD/volume
-      // posts are appended after the weekly ones in the source feed).
-      let wi = 0;
-      for (let i = 1; i < group.items.length; i++) {
-        if ((group.items[i].date ?? '') >= (group.items[wi].date ?? '')) wi = i;
-      }
-      const winner = group.items[wi];
-      for (let i = 0; i < group.items.length; i++) {
-        if (i === wi) continue;
-        winner.qualities.push(...group.items[i].qualities);
-        skip.add(group.items[i]);
-      }
-    }
-  };
-  // No badge (movies/specials): still merge exact-title duplicates — two
-  // "Mind Game" posts are the same film published twice. Fuzzy matching also
-  // catches one-letter source typos ("Neppuu" vs "Neppu").
-  collapse(nullCards, true);
-  for (const cards of byNumber.values()) collapse(cards);
-  const finalList = expanded.filter((ep) => !skip.has(ep));
-  // Scraper-noise cleanup ([HEXHASH] tags, LEAKED, doubled brackets) runs LAST so
-  // batch-split detection above still sees the raw hashes it depends on.
-  for (const ep of finalList) cleanEpisodeText(ep);
-  s.episodes = finalList;
+    const numA = a.number ?? 0;
+    const numB = b.number ?? 0;
+    if (numB !== numA) return numB - numA;
+    return String(b.slug).localeCompare(String(a.slug));
+  });
 }
 
 const GENERIC_PREFIXES = new Set(['yuusha', 'princess', 'isekai', 'mahou', 'shin', 'super', 'strike', 'kono', 'seishun', 'ore', 'watashi', 'boku', 'toaru', 'gekijouban']);
