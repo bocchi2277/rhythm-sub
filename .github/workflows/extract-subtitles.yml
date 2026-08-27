@@ -1,0 +1,54 @@
+name: Extract Subtitles (Cloud Extractor)
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'رابط التحميل (MEGA أو Nyaa Torrent URL)'
+        required: true
+        default: 'https://nyaa.si/download/2151962.torrent'
+      name:
+        description: 'اسم العمل والحلقة (لتسمية الملف)'
+        required: true
+        default: 'Clevatess_II_08'
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Tools (MKVToolNix, Aria2, Megatools, FFmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mkvtoolnix aria2 megatools ffmpeg
+          pip install --no-cache-dir mega.py
+
+      - name: Download Video & Extract Subtitles
+        run: |
+          node scraper/src/extract-sub.mjs "${{ inputs.url }}" "${{ inputs.name }}"
+
+      - name: Upload Extracted Subtitles (.ass & fonts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.name }}-Subtitles"
+          path: extracted_subtitles/
+          retention-days: 30
+
+      - name: Job Summary
+        run: |
+          echo "### 🎬 Subtitle Extraction Succeeded!" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target:** \`${{ inputs.name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** \`${{ inputs.url }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifacts Ready:** يمكنك تنزيل ملف الترجمة والخطوط الآن من قسم Artifacts أعلاه." >> $GITHUB_STEP_SUMMARY
