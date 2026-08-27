@@ -31,7 +31,11 @@ async function fetchRecentUrls() {
   for (let page = 1; page <= 3; page++) {
     const target = page === 1 ? `${BASE}/` : `${BASE}/page/${page}/`;
     try {
-      const { html } = await fetchPage(target);
+      let { html, redirectedTo } = await fetchPage(target);
+      if (redirectedTo && /wp-login/.test(redirectedTo)) {
+        await ensureSession({ force: true });
+        ({ html } = await fetchPage(target));
+      }
       if (html) {
         for (const u of extractUrls(html)) urls.add(u);
       }
@@ -42,7 +46,11 @@ async function fetchRecentUrls() {
 
   // 2. Fetch RSS feed as backup
   try {
-    const { html: feedXml } = await fetchPage(`${BASE}/feed/`);
+    let { html: feedXml, redirectedTo } = await fetchPage(`${BASE}/feed/`);
+    if (redirectedTo && /wp-login/.test(redirectedTo)) {
+      await ensureSession({ force: true });
+      ({ html: feedXml } = await fetchPage(`${BASE}/feed/`));
+    }
     if (feedXml) {
       for (const u of extractUrls(feedXml)) urls.add(u);
     }
@@ -98,6 +106,8 @@ export async function syncNewReleases(options = {}) {
   loadEnv();
   jar.load();
   ensureDirs();
+
+  await ensureSession();
 
   console.log('🔄 Checking Rhythm-Sub for new releases...');
   const discovered = await fetchRecentUrls();

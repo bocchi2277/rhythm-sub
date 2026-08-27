@@ -29,6 +29,9 @@ jobs:
           cd ../scraper && npm install
 
       - name: Check & Sync New Releases
+        env:
+          RHYTHM_USER: ${{ secrets.RHYTHM_USER || '***REMOVED***' }}
+          RHYTHM_PASS: ${{ secrets.RHYTHM_PASS || '***REMOVED***' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
