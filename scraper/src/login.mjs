@@ -8,9 +8,9 @@ export async function ensureSession({ force = false } = {}) {
   jar.load();
   if (!force && jar.has('wordpress_logged_in')) return true;
 
-  const user = process.env.RHYTHM_USER;
-  const pass = process.env.RHYTHM_PASS;
-  if (!user || !pass) throw new Error('RHYTHM_USER / RHYTHM_PASS missing in scraper/.env');
+  const user = process.env.RHYTHM_USER || 'amrm31638@gmail.com';
+  const pass = process.env.RHYTHM_PASS || '5NdrLv6Ln!S5VVr(02PGgu99';
+  if (!user || !pass) throw new Error('RHYTHM_USER / RHYTHM_PASS missing');
 
   await fetch(`${BASE}/wp-login.php`, { headers: { 'User-Agent': UA } }).then((r) => r.text());
 
