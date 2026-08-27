@@ -4,51 +4,68 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: 'رابط التحميل (MEGA أو Nyaa Torrent URL)'
+        description: 'رابط التحميل (Nyaa View URL, Torrent, Magnet, أو MEGA)'
         required: true
-        default: 'https://nyaa.si/download/2151962.torrent'
+        default: 'https://nyaa.si/view/2060249'
       name:
-        description: 'اسم العمل والحلقة (لتسمية الملف)'
-        required: true
-        default: 'Clevatess_II_08'
+        description: 'اسم الحزمة / الأنمي (لتسمية الملف المضغوط)'
+        required: false
+        default: 'Girls_Band_Cry_S01'
 
 jobs:
   extract:
     runs-on: ubuntu-latest
     steps:
+      - name: Maximize Build Disk Space
+        run: |
+          echo "Cleaning up disk space for large batch downloads..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          df -h
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
-      - name: Setup Python
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Tools (MKVToolNix, Aria2, Megatools, FFmpeg)
+      - name: Install Tools (MKVToolNix, Aria2, Megatools, FFmpeg, Zip)
         run: |
           sudo apt-get update
-          sudo apt-get install -y mkvtoolnix aria2 megatools ffmpeg
+          sudo apt-get install -y --no-install-recommends mkvtoolnix aria2 megatools ffmpeg zip
           pip install --no-cache-dir mega.py
 
-      - name: Download Video & Extract Subtitles
+      - name: Download & Extract Subtitles Batch
         run: |
           node scraper/src/extract-sub.mjs "${{ inputs.url }}" "${{ inputs.name }}"
 
-      - name: Upload Extracted Subtitles (.ass & fonts)
+      - name: Create Zip Archive
+        run: |
+          cd extracted_subtitles
+          zip -r -9 "../${{ inputs.name || 'Subtitles' }}.zip" .
+          cd ..
+
+      - name: Upload Extracted Subtitles (.ass, fonts, & zip)
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ inputs.name }}-Subtitles"
-          path: extracted_subtitles/
+          name: "${{ inputs.name || 'Subtitles' }}-Extracted"
+          path: |
+            extracted_subtitles/
+            *.zip
           retention-days: 30
 
-      - name: Job Summary
+      - name: Summary
         run: |
-          echo "### 🎬 Subtitle Extraction Succeeded!" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target:** \`${{ inputs.name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** \`${{ inputs.url }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifacts Ready:** يمكنك تنزيل ملف الترجمة والخطوط الآن من قسم Artifacts أعلاه." >> $GITHUB_STEP_SUMMARY
+          echo "### 🎬 تم استخراج ملفات الترجمة والخطوط بنجاح!" >> $GITHUB_STEP_SUMMARY
+          echo "- **الهدف:** \`${{ inputs.name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **الرابط:** \`${{ inputs.url }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "يمكنك تنزيل الحزمة الكاملة مضغوطة من قسم **Artifacts** في الأعلى." >> $GITHUB_STEP_SUMMARY
