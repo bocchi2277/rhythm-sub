@@ -59,8 +59,24 @@ function sanitizeFilename(name) {
     .trim();
 }
 
+async function resolveMediafireDirectUrl(mfUrl) {
+  try {
+    const res = await fetch(mfUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    const html = await res.text();
+    const match = html.match(/href=["'](https?:\/\/[^"']*mediafire\.com\/[^"']*\/[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)["']/i) ||
+                  html.match(/aria-label=["']Download file["']\s+href=["']([^"']+)["']/i) ||
+                  html.match(/id=["']downloadButton["']\s+href=["']([^"']+)["']/i);
+    if (match) return match[1];
+  } catch (e) {
+    console.warn('Could not scrape MediaFire direct link:', e.message);
+  }
+  return mfUrl;
+}
+
 export async function extractSubtitles(rawUrl, outputName) {
-  const inputUrl = normalizeUrl(rawUrl);
+  let inputUrl = normalizeUrl(rawUrl);
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const workDir = path.resolve('temp_work');
@@ -79,7 +95,7 @@ export async function extractSubtitles(rawUrl, outputName) {
   console.log(`🔗 Input URL: ${inputUrl}`);
   console.log(`======================================================\n`);
 
-  // 1. Download source files
+  // 1. Download source files based on service
   if (inputUrl.startsWith('magnet:') || inputUrl.includes('.torrent') || inputUrl.includes('nyaa.si')) {
     console.log('📥 Downloading via BitTorrent (aria2c)...');
     const ariaArgs = [
@@ -95,6 +111,14 @@ export async function extractSubtitles(rawUrl, outputName) {
       `"${inputUrl}"`
     ].join(' ');
     run(`aria2c ${ariaArgs}`);
+  } else if (inputUrl.includes('drive.google.com')) {
+    console.log('📥 Downloading from Google Drive (gdown)...');
+    run(`gdown "${inputUrl}" -O "${workDir}/" --fuzzy ${inputUrl.includes('/folders/') ? '--folder' : ''}`);
+  } else if (inputUrl.includes('mediafire.com')) {
+    console.log('📥 Resolving and downloading from MediaFire...');
+    const directMf = await resolveMediafireDirectUrl(inputUrl);
+    console.log(`Direct MediaFire link: ${directMf}`);
+    run(`aria2c --dir="${workDir}" --file-allocation=none --summary-interval=10 "${directMf}"`);
   } else if (inputUrl.includes('mega.nz')) {
     console.log('📥 Downloading from MEGA...');
     try {
