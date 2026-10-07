@@ -23,19 +23,33 @@ jobs:
         with:
           node-version: 22
 
-      # data/posts/ (12MB+, gitignored) is required by build-model.mjs:
-      # rebuilding series.json from only the ~30 recent posts would WIPE the
-      # other ~1000. The run-scoped key forces a fresh save every run while
-      # restore-keys reuses the latest cache. sync.mjs also guards against a
-      # partial POSTS_DIR and fails loudly instead of wiping.
-      - name: Restore posts + session cache
+      # Reuse login cookies across runs: fresh logins from datacenter IPs
+      # are often challenged by Cloudflare, while a saved session just works.
+      - name: Restore session cache
         uses: actions/cache@v4
         with:
-          path: |
-            data/posts
-            scraper/.session.json
-          key: rhythm-sync-${{ github.run_id }}
-          restore-keys: rhythm-sync-
+          path: scraper/.session.json
+          key: rhythm-session-${{ github.run_id }}
+          restore-keys: rhythm-session-
+
+      # data/posts/ is gitignored but is REQUIRED input for build-model.mjs.
+      # The full snapshot lives on the `sync-data` branch (seeded locally);
+      # rebuilding series.json from only the ~30 recent posts would WIPE the
+      # other ~1000 (sync.mjs guards against this and fails loudly instead).
+      - name: Restore posts snapshot
+        run: |
+          git fetch origin sync-data --depth 1 || true
+          if git cat-file -e origin/sync-data:posts.tar.gz 2>/dev/null; then
+            git show origin/sync-data:posts.tar.gz > /tmp/posts.tar.gz
+            mkdir -p data/posts
+            tar -xzf /tmp/posts.tar.gz -C data
+            echo "Restored $(ls data/posts/*.json | wc -l) post files."
+          else
+            echo "::warning::No posts snapshot on sync-data branch; sync may refuse to rebuild."
+          fi
+
+      - name: Record HEAD
+        run: echo "HEAD_BEFORE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
@@ -54,3 +68,21 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           node scraper/src/sync.mjs --push
+
+      # Keep the snapshot in lockstep with main as a single-commit orphan
+      # branch. Only runs when this job itself committed new data.
+      - name: Update posts snapshot
+        if: success()
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$HEAD_BEFORE" ]; then
+            tar -czf /tmp/posts-new.tar.gz -C data posts
+            git checkout --orphan tmp-snapshot
+            git rm -rf --cached . -q
+            cp /tmp/posts-new.tar.gz ./posts.tar.gz
+            git add posts.tar.gz
+            git commit -qm "posts snapshot $(date -u +%FT%TZ)"
+            git push --force origin tmp-snapshot:sync-data
+            git checkout -f main
+          else
+            echo "No new data committed; snapshot unchanged."
+          fi
