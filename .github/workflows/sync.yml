@@ -1,0 +1,60 @@
+name: sync-from-original
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install scraper deps
+        run: npm ci --no-fund --no-audit
+        working-directory: scraper
+
+      - name: Crawl index
+        run: node src/crawl.mjs
+        working-directory: scraper
+        env:
+          RHYTHM_USER: ${{ secrets.RHYTHM_USER }}
+          RHYTHM_PASS: ${{ secrets.RHYTHM_PASS }}
+
+      - name: Scrape new posts
+        run: node src/scrape.mjs
+        working-directory: scraper
+        env:
+          RHYTHM_USER: ${{ secrets.RHYTHM_USER }}
+          RHYTHM_PASS: ${{ secrets.RHYTHM_PASS }}
+
+      - name: Build model
+        run: node src/build-model.mjs
+        working-directory: scraper
+
+      - name: Download new images
+        run: node src/download-images.mjs
+        working-directory: scraper
+
+      - name: Install site deps
+        run: npm ci --no-fund --no-audit
+        working-directory: site
+
+      - name: Optimize new images
+        run: node scripts/optimize-images.mjs
+        working-directory: site
+
+      - name: Commit changes
+        run: |
+          git config user.name "rhythm-sync"
+          git config user.email "sync@localhost"
+          git add data/series.json data/post_urls.json data/pages site/public/img site/public/img-manifest.json
+          git diff --cached --quiet && echo "no new content" || (git commit -m "sync: pull new releases from original site" && git push)
