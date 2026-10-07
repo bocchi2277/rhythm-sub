@@ -23,6 +23,20 @@ jobs:
         with:
           node-version: 22
 
+      # data/posts/ (12MB+, gitignored) is required by build-model.mjs:
+      # rebuilding series.json from only the ~30 recent posts would WIPE the
+      # other ~1000. The run-scoped key forces a fresh save every run while
+      # restore-keys reuses the latest cache. sync.mjs also guards against a
+      # partial POSTS_DIR and fails loudly instead of wiping.
+      - name: Restore posts + session cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/posts
+            scraper/.session.json
+          key: rhythm-sync-${{ github.run_id }}
+          restore-keys: rhythm-sync-
+
       - name: Install dependencies
         run: |
           cd site && npm ci
@@ -30,9 +44,13 @@ jobs:
 
       - name: Check & Sync New Releases
         env:
-          RHYTHM_USER: ${{ secrets.RHYTHM_USER || 'amrm31638@gmail.com' }}
-          RHYTHM_PASS: ${{ secrets.RHYTHM_PASS || '5NdrLv6Ln!S5VVr(02PGgu99' }}
+          RHYTHM_USER: ${{ secrets.RHYTHM_USER }}
+          RHYTHM_PASS: ${{ secrets.RHYTHM_PASS }}
         run: |
+          if [ -z "$RHYTHM_USER" ] || [ -z "$RHYTHM_PASS" ]; then
+            echo "::error::RHYTHM_USER / RHYTHM_PASS secrets are not set. Add them in Settings → Secrets and variables → Actions."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           node scraper/src/sync.mjs --push

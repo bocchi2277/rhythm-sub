@@ -12,7 +12,11 @@ export async function ensureSession({ force = false } = {}) {
   const pass = process.env.RHYTHM_PASS || '5NdrLv6Ln!S5VVr(02PGgu99';
   if (!user || !pass) throw new Error('RHYTHM_USER / RHYTHM_PASS missing');
 
-  await fetch(`${BASE}/wp-login.php`, { headers: { 'User-Agent': UA } }).then((r) => r.text());
+  // Prime cookies (Cloudflare clearance: cf_clearance, __cf_bm) before POST —
+  // fresh CI runners have no saved jar, and posting without them gets challenged.
+  const pre = await fetch(`${BASE}/wp-login.php`, { headers: { 'User-Agent': UA } });
+  jar.absorb(pre);
+  await pre.arrayBuffer().catch(() => {});
 
   const res = await postForm(`${BASE}/wp-login.php`, {
     log: user,

@@ -192,9 +192,25 @@ export async function syncNewReleases(options = {}) {
     fs.writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2));
   }
 
+  // Guard: never rebuild from a partial POSTS_DIR (e.g. fresh CI checkout
+  // without the data/posts cache, or a run where some fetches failed).
+  // Rebuilding from fewer files than known URLs would silently DROP posts
+  // from series.json. Fail loudly instead — the next run retries.
+  const expectedPosts = [...existingSet].length;
+  const postFiles = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.json')).length;
+  if (postFiles < expectedPosts) {
+    throw new Error(
+      `Refusing to rebuild: ${postFiles} post files but ${expectedPosts} known URLs. ` +
+        `Restore the data/posts cache (or run sync locally with full history) instead of wiping series.json.`
+    );
+  }
+
   // Rebuild data model (series.json)
   console.log('\n🏗️ Rebuilding series & episode model...');
-  execSync('node scraper/src/build-model.mjs', { stdio: 'inherit' });
+  execSync(`node "${path.resolve(DATA, '../scraper/src/build-model.mjs')}"`, {
+    stdio: 'inherit',
+    cwd: path.resolve(DATA, '..')
+  });
 
   // Optional build site
   if (autoBuild) {
