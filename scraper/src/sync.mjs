@@ -192,16 +192,16 @@ export async function syncNewReleases(options = {}) {
     fs.writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2));
   }
 
-  // Guard: never rebuild from a partial POSTS_DIR (e.g. fresh CI checkout
-  // without the data/posts cache, or a run where some fetches failed).
-  // Rebuilding from fewer files than known URLs would silently DROP posts
-  // from series.json. Fail loudly instead — the next run retries.
+  // Guard: never rebuild from a partial POSTS_DIR (e.g. CI run where the
+  // sync-data snapshot failed to restore, or a run where some fetches
+  // failed). Rebuilding from fewer files than known URLs would silently
+  // DROP posts from series.json. Fail loudly instead — the next run retries.
   const expectedPosts = [...existingSet].length;
   const postFiles = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.json')).length;
   if (postFiles < expectedPosts) {
     throw new Error(
       `Refusing to rebuild: ${postFiles} post files but ${expectedPosts} known URLs. ` +
-        `Restore the data/posts cache (or run sync locally with full history) instead of wiping series.json.`
+        `Restore data/posts from the sync-data branch snapshot (or run sync locally with full history) instead of wiping series.json.`
     );
   }
 
