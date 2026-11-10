@@ -102,8 +102,11 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
             قائمة الحلقات والإصدارات ({s.episodes.length})
           </h2>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {s.episodes.map((ep, i) => (
-              <EpisodeRow key={`${ep.slug}-${ep.postId ?? 'team'}-${i}`} ep={ep} typeText={s.type?.text} seriesSlug={s.slug} />
+            {s.episodes.map((ep) => (
+              /* Episode slugs are unique inside a series (guaranteed by
+                 ensureUniqueEpisodeSlugs in lib/data.ts) — no index needed:
+                 an index in the key makes React re-mount rows on re-sort. */
+              <EpisodeRow key={ep.slug} ep={ep} typeText={s.type?.text} seriesSlug={s.slug} />
             ))}
           </div>
         </section>

@@ -1,4 +1,4 @@
-import { sitePage, mappedHtml, socials } from '@/lib/data';
+import { sitePage, socials } from '@/lib/data';
 import { safeUrl } from '@/lib/url';
 
 export const metadata = { title: 'الدعم الفني' };
@@ -14,7 +14,8 @@ export default function SupportPage() {
   // The form flag is captured from the raw markup at load time, because
   // sanitizePageHtml() strips <form> before this component ever runs.
   const hasForm = page?.hasForm ?? false;
-  const html = mappedHtml(page?.contentHtml ?? '');
+  // contentHtml is sanitized + localized at load time (lib/pages.ts).
+  const html = page?.contentHtml ?? '';
 
   return (
     <div className="max-w-4xl mx-auto px-4 mt-6">

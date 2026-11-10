@@ -9,12 +9,45 @@ export const POSTS_DIR = path.join(DATA, 'posts');
 export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 export const BASE = 'https://rhythm-sub.com';
 
+/**
+ * Parse a .env file into key/value pairs.
+ *
+ * Accepts comments, an optional `export ` prefix, quoted values and inline
+ * comments (outside quotes). Exported separately from loadEnv() so it can be
+ * unit-tested without touching the filesystem.
+ */
+export function parseEnvFile(content) {
+  const out = {};
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    // Accept an optional "export " prefix and any legal identifier (digits
+    // after the first character), the way a shell would.
+    const m = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m) continue;
+    const key = m[1];
+    let value = m[2].trim();
+    // An inline comment is only a comment when it is outside a quoted value.
+    if (!/^["']/.test(value)) value = value.replace(/\s+#.*$/, '').trim();
+    // Strip matching surrounding quotes.
+    if (
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 export function loadEnv() {
   const envFile = path.join(ROOT, 'scraper', '.env');
   if (!fs.existsSync(envFile)) return;
-  for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^([A-Z_]+)=(.*)$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+  const parsed = parseEnvFile(fs.readFileSync(envFile, 'utf8'));
+  // A value already present in the environment always wins.
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!process.env[key]) process.env[key] = value;
   }
 }
 

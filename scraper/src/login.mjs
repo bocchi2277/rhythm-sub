@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { BASE, UA, jar, postForm } from './http.mjs';
 import { loadEnv } from './util.mjs';
 
@@ -61,7 +62,10 @@ export async function ensureSession({ force = false } = {}) {
   return true;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
+// CLI direct run. Compare the resolved path (not a filename suffix): a
+// "endsWith('login.mjs')" check would also fire for an unrelated file that
+// happens to share the name.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   ensureSession({ force: true })
     .then(() => console.log('LOGIN OK'))
     .catch((e) => {

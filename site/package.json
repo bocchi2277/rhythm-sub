@@ -2,11 +2,13 @@
   "name": "rhythm-sub-site",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/inline-css.mjs",
     "start": "node scripts/preview-server.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:assets": "node scripts/check-no-external-assets.mjs out"
   },
   "dependencies": {
     "next": "^15.5.29",

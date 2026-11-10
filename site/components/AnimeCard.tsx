@@ -1,6 +1,8 @@
 import Link from 'next/link';
-import type { Series } from '@/lib/data';
-import { img } from '@/lib/data';
+import type { Series } from '@/lib/types';
+// Imported from lib/images (not lib/data) so this component does not pull the
+// whole 2.3MB series model into its module graph.
+import { img } from '@/lib/images';
 
 export function StatusBadge({ status }: { status?: string | null }) {
   if (!status) return null;

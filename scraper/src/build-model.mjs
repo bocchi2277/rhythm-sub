@@ -109,7 +109,7 @@ function pickLatest(posts, getter) {
   return null;
 }
 
-function cleanSynopsis(s) {
+export function cleanSynopsis(s) {
   if (!s) return '';
   let t = String(s)
     .replace(/^قصة\s*الأنمي\s*[:：]?\s*/i, '')
@@ -117,7 +117,7 @@ function cleanSynopsis(s) {
     .trim();
 
   // Strip leading greetings/announcements/lines if followed by actual synopsis paragraphs
-  t = t.replace(/^(?:#فضفضة[^\n]*\n+|السلام\s*عليكم[^\n]*\n+|مرحبا[^\n]*\n+|أهلًا\s*بالجميع[^\n]*\n+|تادا[^\n]*\n+|مبارك\s*عليكم[^\n]*\n+|نقدم\s*لكم[^\n]*\n+|نقدك\s*لكم[^\n]*\n+|يسرنا[^\n]*\n+|يسعدنا[^\n]*\n+|نعود\s*لكم[^\n]*\n+|رجعنا\s*لكم[^\n]*\n+|ه?آي\s*مينا[^\n]*\n+|الموسم\s*[^\n]*\n+|Anime Info[^\n]*\n+)+/i, '').trim();
+  t = t.replace(/^(?:#فضفضة[^\n]*\n+|السلام\s*عليكم[^\n]*\n+|مرحبا[^\n]*\n+|أهلًا\s*بالجميع[^\n]*\n+|تادا[^\n]*\n+|مبارك\s*عليكم[^\n]*\n+|نقد[مك]\s*لكم[^\n]*\n+|نقدم\s*لكم[^\n]*\n+|يسرنا[^\n]*\n+|يُ?سعدني[^\n]*\n+|يسعدنا[^\n]*\n+|نعود\s*لكم[^\n]*\n+|رجعنا\s*لكم[^\n]*\n+|ه?آي\s*مينا[^\n]*\n+|الموسم\s*[^\n]*\n+|Anime Info[^\n]*\n+)+/i, '').trim();
 
   // If text is pure metadata or staff lines
   if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات|Anime Info|TL|TLC|QC|TS|Encode)\s*:/i.test(t)) return '';
@@ -136,6 +136,26 @@ function cleanSynopsis(s) {
 
 const INVALID_ROLE_RE = /^(https?|ftp|www|anime\s*info|http)$/i;
 const GENERIC_PREFIXES = new Set(['yuusha', 'princess', 'isekai', 'mahou', 'shin', 'super', 'strike', 'kono', 'seishun', 'ore', 'watashi', 'boku', 'toaru', 'gekijouban']);
+
+// Declared once at module scope (previously re-created inside the per-series
+// loop).
+const COVER_OVERRIDES = {
+  'high-school-dxd-ova': 'https://rhythm-sub.com/wp-content/uploads/2020/01/94594db3230322d9f735cde56495f6a9.jpg',
+};
+
+// Title words that carry no franchise signal.
+const STOPWORDS = new Set([
+  'anime', 'season', 'the', 'movie', 'ova', 'vol', 'part', 'shounen', 'shoujo',
+  'isekai', 'yuusha', 'tame', 'kamo', 'danshi', 'koukou', 'gakkou', 'tokubetsu',
+  'hen', 'kara', 'shin', 'ore', 'boku', 'watashi', 'uchi', 'kono', 'sono', 'ano',
+  'shikashitara', 'special', 'specials', 'blu', 'ray', 'dvd', 'film'
+]);
+
+function areDistinctlyRelated(titleA, titleB) {
+  const wordsA = (titleA || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  const wordsB = (titleB || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  return wordsA.some((w) => wordsB.includes(w));
+}
 
 function getFranchiseKey(slug) {
   const parts = slug.split('-').filter(Boolean);
@@ -215,13 +235,15 @@ function main() {
   const slugIndex = new Map();
   const usedSlugs = new Set();
 
-  for (const [, groupPosts] of groups) {
-    groupPosts.sort((a, b) => String(b.publishedAt ?? '').localeCompare(String(a.publishedAt ?? '')));
-    const newest = groupPosts[0];
+  // NOTE: the loop variable must NOT be named `groupPosts` — that would
+  // shadow the exported grouping function of the same name.
+  for (const [, members] of groups) {
+    members.sort((a, b) => String(b.publishedAt ?? '').localeCompare(String(a.publishedAt ?? '')));
+    const newest = members[0];
 
     const seenSlugs = new Set();
     const uniq = [];
-    for (const p of groupPosts) {
+    for (const p of members) {
       if (!seenSlugs.has(p.slug)) {
         seenSlugs.add(p.slug);
         uniq.push(p);
@@ -288,10 +310,6 @@ function main() {
 
     const guideUrls = [...new Set(uniq.flatMap((p) => (p.seriesGuide ?? []).map((g) => g.url)))];
 
-const COVER_OVERRIDES = {
-  'high-school-dxd-ova': 'https://rhythm-sub.com/wp-content/uploads/2020/01/94594db3230322d9f735cde56495f6a9.jpg',
-};
-
     const series = {
       key: newest.malUrl ? `mal:${newest.malUrl}` : `slug:${asciiSlug(normalizeSlug(newest.slug))}`,
       malUrl: pickLatest(uniq, (p) => p.malUrl),
@@ -327,19 +345,6 @@ const COVER_OVERRIDES = {
       franchiseMap.get(key).push(s.key);
     }
   }
-
-const STOPWORDS = new Set([
-  'anime', 'season', 'the', 'movie', 'ova', 'vol', 'part', 'shounen', 'shoujo',
-  'isekai', 'yuusha', 'tame', 'kamo', 'danshi', 'koukou', 'gakkou', 'tokubetsu',
-  'hen', 'kara', 'shin', 'ore', 'boku', 'watashi', 'uchi', 'kono', 'sono', 'ano',
-  'shikashitara', 'special', 'specials', 'blu', 'ray', 'dvd', 'film'
-]);
-
-function areDistinctlyRelated(titleA, titleB) {
-  const wordsA = (titleA || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
-  const wordsB = (titleB || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
-  return wordsA.some((w) => wordsB.includes(w));
-}
 
   const seriesByKey = new Map(seriesList.map((s) => [s.key, s]));
 
