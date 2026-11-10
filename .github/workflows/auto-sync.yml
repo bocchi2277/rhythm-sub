@@ -19,15 +19,12 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # Optional: enables the encrypted session cache. When unset, the cache
-      # restore/decrypt/encrypt steps are skipped and every run logs in fresh
-      # with RHYTHM_USER / RHYTHM_PASS.
-      RHYTHM_SESSION_KEY: ${{ secrets.RHYTHM_SESSION_KEY }}
-      # Optional: a browser cookie for rhythm-sub.com. Use this when
-      # wp-login.php is blocked for runner IPs (the scraper then authenticates
-      # with the cookie instead of logging in). Format: "name=value; name2=value2".
-      RHYTHM_COOKIE: ${{ secrets.RHYTHM_COOKIE }}
+    # NOTE: the secrets below are deliberately NOT declared at job level.
+    # A job-level `env` is inherited by EVERY step — including
+    # `npm ci`, which runs dependency install scripts. A compromised
+    # transitive dependency could then exfiltrate RHYTHM_COOKIE (a live
+    # WordPress session) and RHYTHM_SESSION_KEY (the key that decrypts the
+    # cached session). Each secret is scoped to the steps that use it.
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -47,10 +44,10 @@ jobs:
       # plaintext .session.json never leaves the runner. A per-run key lets
       # every run save refreshed cookies; restore-keys picks the newest one.
       - name: Restore encrypted session cache
-        if: env.RHYTHM_SESSION_KEY != ''
-        # restore-only on purpose: actions/cache's own post step runs with
-        # post-if: success(), so it never saves when the job failed. The
-        # matching save step below is explicit and runs on failure too.
+        # Deliberately no `if: secrets.X` — the secrets context is NOT available
+        # in step conditions (GitHub docs), so that form silently never runs.
+        # A cache miss is harmless; the decrypt step drops a restored file when
+        # no key is configured.
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: scraper/.session.enc
@@ -58,14 +55,20 @@ jobs:
           restore-keys: rhythm-session-
 
       - name: Decrypt session
-        if: env.RHYTHM_SESSION_KEY != ''
+        env:
+          RHYTHM_SESSION_KEY: ${{ secrets.RHYTHM_SESSION_KEY }}
         run: |
+          if [ -z "$RHYTHM_SESSION_KEY" ]; then
+            echo "No RHYTHM_SESSION_KEY; dropping any restored cache and logging in fresh."
+            rm -f scraper/.session.enc scraper/.session.json
+            exit 0
+          fi
           if [ ! -f scraper/.session.enc ]; then
             echo "No cached session; sync will log in fresh."
             exit 0
           fi
           # -pass env: keeps the key out of argv and logs.
-          if openssl enc -aes-256-cbc -pbkdf2 -d -pass env:RHYTHM_SESSION_KEY \
+          if openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -d -pass env:RHYTHM_SESSION_KEY \
               -in scraper/.session.enc -out scraper/.session.json; then
             echo "Cached session decrypted."
           else
@@ -137,6 +140,11 @@ jobs:
         env:
           RHYTHM_USER: ${{ secrets.RHYTHM_USER }}
           RHYTHM_PASS: ${{ secrets.RHYTHM_PASS }}
+          # Optional: a browser cookie for rhythm-sub.com. Use this when
+          # wp-login.php is blocked for runner IPs (the scraper then
+          # authenticates with the cookie instead of logging in).
+          # Format: "name=value; name2=value2".
+          RHYTHM_COOKIE: ${{ secrets.RHYTHM_COOKIE }}
         run: |
           if [ -z "$RHYTHM_USER" ] || [ -z "$RHYTHM_PASS" ]; then
             echo "::error::RHYTHM_USER / RHYTHM_PASS secrets are not set. Add them in Settings → Secrets and variables → Actions."
@@ -152,13 +160,23 @@ jobs:
       # run) so the post-job cache save captures it. Runs even if sync failed:
       # a partially refreshed session is still better than none.
       - name: Encrypt session for cache
-        if: always() && env.RHYTHM_SESSION_KEY != ''
+        if: always()
         # Never let this auxiliary step block the publish: the data commit
         # already succeeded and must still reach sync-data + main.
         continue-on-error: true
+        env:
+          RHYTHM_SESSION_KEY: ${{ secrets.RHYTHM_SESSION_KEY }}
         run: |
+          if [ -z "$RHYTHM_SESSION_KEY" ]; then
+            echo "No RHYTHM_SESSION_KEY; skipping session cache."
+            exit 0
+          fi
           if [ -f scraper/.session.json ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:RHYTHM_SESSION_KEY \
+            # -iter 600000: `openssl enc -pbkdf2` defaults to only 10 000
+            # iterations, far below the current OWASP floor for PBKDF2-HMAC-
+            # SHA256. NOTE: CBC is unauthenticated — see HANDOVER.md for the
+            # recommended switch to an AEAD scheme.
+            openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:RHYTHM_SESSION_KEY \
               -in scraper/.session.json -out scraper/.session.enc
             echo "Session encrypted for the cache save."
           else
@@ -169,7 +187,9 @@ jobs:
       # failed job would drop a session that was refreshed successfully).
       # The key is unique per run/attempt, so every run stores its own entry.
       - name: Save encrypted session cache
-        if: always() && env.RHYTHM_SESSION_KEY != ''
+        # hashFiles (not `secrets`) — secrets are unavailable in `if`. Skips the
+        # step when the encrypt step produced no file.
+        if: always() && hashFiles('scraper/.session.enc') != ''
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: scraper/.session.enc

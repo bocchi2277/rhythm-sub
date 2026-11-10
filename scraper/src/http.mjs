@@ -132,6 +132,15 @@ export async function fetchPage(url, { tries = 3, timeoutMs = 30000, depth = 0 }
         if (sameSiteHost(url)) jar.absorb(res);
         await res.arrayBuffer().catch(() => {});
         if (/wp-login/.test(loc)) return { status: res.status, redirectedTo: loc, html: null };
+        // Never follow a redirect off-site. The HTML we fetch is republished
+        // verbatim into data/posts/*.json -> series.json -> the public site,
+        // so an open redirect on the upstream (or a compromised host) would
+        // both become an SSRF primitive (http://169.254.169.254/...) and
+        // inject attacker-controlled markup into the published model.
+        // fetchAllowedImage() applies the same rule for image downloads.
+        if (!sameSiteHost(loc)) {
+          return { status: res.status, redirectedTo: loc, html: null };
+        }
         if (depth < 5) return fetchPage(loc, { tries, timeoutMs, depth: depth + 1 });
         return { status: res.status, redirectedTo: loc, html: null };
       }
