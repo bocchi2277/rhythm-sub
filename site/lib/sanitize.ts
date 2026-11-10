@@ -7,6 +7,9 @@ import sanitizeHtml from 'sanitize-html';
  * `dangerouslySetInnerHTML`, so it is untrusted input: if the upstream site is
  * ever compromised, the payload would otherwise execute in visitors' browsers
  * (stored XSS). Sanitize through an allowlist at the boundary instead.
+ *
+ * The asset mapper is injected by the caller (dependency inversion): this
+ * module stays free of filesystem access, so it can be unit-tested directly.
  */
 
 const ALLOWED_TAGS = [
@@ -60,6 +63,9 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   '*': ['class', 'align']
 };
 
+/** Maps an <img src> found in untrusted markup to a safe, local URL. */
+export type ImageMapper = (src: string | undefined) => string;
+
 export const PAGE_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   allowedTags: ALLOWED_TAGS,
   allowedAttributes: ALLOWED_ATTRIBUTES,
@@ -77,6 +83,37 @@ export const PAGE_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   nonTextTags: ['script', 'style', 'textarea', 'option', 'select', 'form', 'input', 'button']
 };
 
-export function sanitizePageHtml(dirty: string): string {
-  return sanitizeHtml(dirty, PAGE_SANITIZE_OPTIONS);
+// sanitize-html compiles the options on every call, so build them once per
+// mapper instead of once per document.
+const optionsCache = new WeakMap<ImageMapper, sanitizeHtml.IOptions>();
+
+function optionsFor(mapImage: ImageMapper): sanitizeHtml.IOptions {
+  let options = optionsCache.get(mapImage);
+  if (!options) {
+    options = {
+      ...PAGE_SANITIZE_OPTIONS,
+      transformTags: {
+        ...PAGE_SANITIZE_OPTIONS.transformTags,
+        // Images are resolved to a LOCAL asset. Without this, a compromised
+        // upstream could embed <img src="https://evil.example/beacon.gif"> and
+        // beacon every visitor (IP + referrer leak) from a first-party page.
+        img: (tagName, attribs) => ({
+          tagName,
+          attribs: { ...attribs, src: mapImage(attribs.src) }
+        })
+      }
+    };
+    optionsCache.set(mapImage, options);
+  }
+  return options;
+}
+
+/**
+ * Sanitize untrusted scraped markup.
+ *
+ * @param dirty    the raw markup
+ * @param mapImage resolver for <img src> values (must return a local URL)
+ */
+export function sanitizePageHtml(dirty: string, mapImage: ImageMapper): string {
+  return sanitizeHtml(dirty, optionsFor(mapImage));
 }

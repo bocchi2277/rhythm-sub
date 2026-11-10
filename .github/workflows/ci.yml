@@ -56,3 +56,11 @@ jobs:
       # above (reads site/.next/static/css).
       - name: CSS coverage gate
         run: python3 site/scripts/check-css-coverage.py
+
+      # Blocking gate: the exported HTML must not load any third-party asset.
+      # Every image is rewritten to a local WebP (site/lib/images.ts) and the
+      # HTML allowlist drops third-party <img src> values, so an external
+      # subresource here means one of those guards was bypassed — i.e. a
+      # compromised upstream could beacon every visitor.
+      - name: No third-party asset gate
+        run: cd site && npm run check:assets
