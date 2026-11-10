@@ -2,14 +2,26 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 
 type Item = { slug: string; title: string; alt: string; cover: string; year: number | null; type: string; status: string; rating: number | null };
 
 function SearchInner({ index }: { index: Item[] }) {
-  const params = useSearchParams();
+  const searchParams = useSearchParams();
+  const paramsKey = searchParams.toString();
+  const params = useMemo(() => new URLSearchParams(paramsKey), [paramsKey]);
+
   const [q, setQ] = useState(params.get('q') ?? '');
   const [limit, setLimit] = useState(50);
+
+  // React keeps this component mounted across a same-route navigation, so the
+  // state initializer above only runs on the FIRST mount. Sync the query box
+  // with the URL so a shared link (/search?q=...) or a browser Back/Forward
+  // actually shows what the URL says.
+  useEffect(() => {
+    setQ(params.get('q') ?? '');
+    setLimit(50);
+  }, [paramsKey, params]);
 
   const results = useMemo(() => {
     const needle = q.trim().toLowerCase();
