@@ -18,10 +18,12 @@ import sys
 
 SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-css_files = glob.glob(os.path.join(SITE, '.next', 'static', 'css', '*.css'))
+css_files = sorted(glob.glob(os.path.join(SITE, '.next', 'static', 'css', '*.css')))
 if not css_files:
     sys.exit('no compiled CSS found — run `npm run build` first')
-compiled = open(css_files[0], encoding='utf-8').read()
+# Check EVERY compiled stylesheet: Tailwind v4 can emit more than one file,
+# and reading only the first one silently skipped the rest of the utilities.
+compiled = '\n'.join(open(f, encoding='utf-8').read() for f in css_files)
 
 # Decisive check: a live utilities layer never contains the raw at-rule.
 if re.search(r'@tailwind\s+utilities', compiled):
@@ -93,5 +95,5 @@ for page in pages:
         rel = os.path.relpath(page, SITE)
         print(f'{rel}: used={len(used)} missing={len(missing)} {missing[:10]}')
 
-print(f'\nchecked {len(pages)} pages | spot-checks missing: {len(missing_spot)} | total missing classes: {total_missing}')
+print(f'\nchecked {len(pages)} pages | stylesheets: {len(css_files)} | spot-checks missing: {len(missing_spot)} | total missing classes: {total_missing}')
 sys.exit(1 if (total_missing or missing_spot) else 0)

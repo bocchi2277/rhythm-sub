@@ -1,21 +1,45 @@
 import Link from 'next/link';
 import { allSeries } from '@/lib/data';
+import type { Episode, Series } from '@/lib/data';
 
 export const metadata = { title: 'جدول الحلقات' };
 
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+// Constructed once: `new Intl.DateTimeFormat` is expensive to build and this
+// runs for every ongoing series on every build.
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  timeZone: 'Asia/Riyadh'
+});
+
+const DAY_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 function weekdayOf(iso: string | null): number | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   try {
-    const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Asia/Riyadh' }).format(d);
-    const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    return dayMap[dayName] ?? d.getDay();
+    const dayName = WEEKDAY_FORMATTER.format(d);
+    return DAY_MAP[dayName] ?? d.getDay();
   } catch {
     return d.getDay();
   }
+}
+
+/**
+ * The newest episode that actually carries a date.
+ *
+ * `episodes[0]` is NOT reliable here: episodes are ordered by date first, but
+ * an undated entry (a BD batch, a manually-added release) sorts by episode
+ * number and can land at index 0. Using it would drop a perfectly valid
+ * weekly series from the schedule.
+ */
+function newestDatedEpisode(episodes: Episode[]): Episode | null {
+  for (const ep of episodes) {
+    if (ep.date && !Number.isNaN(new Date(ep.date).getTime())) return ep;
+  }
+  return null;
 }
 
 export default function SchedulePage() {
@@ -25,21 +49,21 @@ export default function SchedulePage() {
     .filter((s) => !/END$/i.test(s.title) && !/movie|film|فيلم/i.test(s.type?.text ?? ''))
     .filter((s) => !/\bBD\b|Vol\.|Blu-ray/i.test(s.title))
     .filter((s) => {
-      const latest = s.episodes[0];
+      const latest = newestDatedEpisode(s.episodes);
       if (!latest) return false;
       if (/\bBD\b|Vol\./i.test(latest.displayNum ?? '')) return false;
-      if (!latest.date) return false;
-      return Date.now() - new Date(latest.date).getTime() < 21 * 24 * 3600 * 1000;
+      return Date.now() - new Date(latest.date!).getTime() < 21 * 24 * 3600 * 1000;
     })
     .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
 
-  const byDay = new Map<number, typeof allSeries>();
+  const byDay = new Map<number, Series[]>();
   for (const s of ongoingSeries) {
-    const latestEp = s.episodes[0];
+    const latestEp = newestDatedEpisode(s.episodes);
     const wd = weekdayOf(latestEp?.date ?? s.lastReleaseAt);
     if (wd == null) continue;
-    if (!byDay.has(wd)) byDay.set(wd, []);
-    byDay.get(wd)!.push(s);
+    const bucket = byDay.get(wd);
+    if (bucket) bucket.push(s);
+    else byDay.set(wd, [s]);
   }
 
   return (
@@ -62,7 +86,7 @@ export default function SchedulePage() {
                 </div>
                 <ul className="divide-y divide-edge">
                   {byDay.get(i)!.map((s) => {
-                    const latestEp = s.episodes[0];
+                    const latestEp = newestDatedEpisode(s.episodes);
                     const epText = latestEp
                       ? latestEp.displayNum || (latestEp.number != null ? `الحلقة ${latestEp.number}` : latestEp.label || 'إصدار جديد')
                       : '—';

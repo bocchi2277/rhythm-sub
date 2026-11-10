@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Item = {
   slug: string;
@@ -32,16 +32,43 @@ type SortKey = (typeof SORTS)[number]['key'];
 
 export default function SearchClient({ index }: { index: Item[] }) {
   const searchParams = useSearchParams();
+  const paramsKey = searchParams.toString();
+  // Parsed from the key so the effect below depends on a stable value and
+  // never reads a stale searchParams object.
+  const params = useMemo(() => new URLSearchParams(paramsKey), [paramsKey]);
 
-  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
-  const [type, setType] = useState(() => searchParams.get('type') ?? '');
-  const [status, setStatus] = useState(() => searchParams.get('status') ?? '');
-  const [genre, setGenre] = useState(() => searchParams.get('genre') ?? '');
+  const [q, setQ] = useState(() => params.get('q') ?? '');
+  const [type, setType] = useState(() => params.get('type') ?? '');
+  const [status, setStatus] = useState(() => params.get('status') ?? '');
+  const [genre, setGenre] = useState(() => params.get('genre') ?? '');
   const [sort, setSort] = useState<SortKey>(() => {
-    const raw = searchParams.get('sort');
+    const raw = params.get('sort');
     return SORTS.some((s) => s.key === raw) ? (raw as SortKey) : 'recent';
   });
   const [limit, setLimit] = useState(24);
+
+  // The last query string this component wrote itself. React keeps the
+  // component mounted across a same-route navigation, so the lazy state
+  // initializers above only run on the FIRST mount: without this sync, a
+  // URL like /advanced-search/?genre=Action (linked from an anime page, or
+  // reached via browser Back/Forward) would keep showing stale filters.
+  const selfWrittenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const ours = selfWrittenRef.current;
+    if (ours !== null) {
+      selfWrittenRef.current = null;
+      // Our own update — the state is already authoritative.
+      if (ours === paramsKey) return;
+    }
+    setQ(params.get('q') ?? '');
+    setType(params.get('type') ?? '');
+    setStatus(params.get('status') ?? '');
+    setGenre(params.get('genre') ?? '');
+    const raw = params.get('sort');
+    setSort(SORTS.some((s) => s.key === raw) ? (raw as SortKey) : 'recent');
+    setLimit(24);
+  }, [paramsKey, params]);
 
   // Sync state to URL params
   const updateUrl = useCallback((newParams: { q?: string; type?: string; status?: string; genre?: string; sort?: string }) => {
@@ -62,7 +89,11 @@ export default function SearchClient({ index }: { index: Item[] }) {
     if (newParams.sort && newParams.sort !== 'recent') url.searchParams.set('sort', newParams.sort);
     else url.searchParams.delete('sort');
 
-    window.history.replaceState(window.history.state, '', url.pathname + (url.search ? url.search : ''));
+    const next = url.pathname + (url.search ? url.search : '');
+    // Remember exactly what we wrote so the URL->state sync below can tell
+    // "our own update" apart from "someone else changed the URL".
+    selfWrittenRef.current = url.search.replace(/^\?/, '');
+    window.history.replaceState(window.history.state, '', next);
   }, []);
 
   const handleQChange = (val: string) => {
