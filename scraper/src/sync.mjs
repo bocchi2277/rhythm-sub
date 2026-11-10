@@ -61,17 +61,27 @@ async function fetchRecentUrls() {
   for (let page = 1; page <= 3; page++) {
     const target = page === 1 ? `${BASE}/` : `${BASE}/page/${page}/`;
     try {
-      let { html, redirectedTo } = await fetchPage(target);
+      let { status, html, redirectedTo } = await fetchPage(target);
       if (redirectedTo && /wp-login/.test(redirectedTo)) {
         await reauthOrThrow();
-        ({ html } = await fetchPage(target));
+        ({ status, html } = await fetchPage(target));
       }
       if (html) {
-        for (const u of extractUrls(html)) urls.add(u);
+        const found = extractUrls(html);
+        const title = (html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] ?? '').trim();
+        // Surfacing status + size + title makes a bot-challenge page (which
+        // returns HTTP 200 with no post links) obvious in the run log.
+        console.log(`   ${target} -> ${status}, ${html.length}B, ${found.length} post link(s)${title ? `, title="${title.slice(0, 60)}"` : ''}`);
+        for (const u of found) urls.add(u);
+      } else {
+        console.warn(`   ${target} -> NO HTML (redirectedTo=${redirectedTo ?? 'none'})`);
       }
     } catch (e) {
       console.warn(`Warning: failed to fetch ${target}:`, e.message);
     }
+  }
+  if (urls.size === 0) {
+    console.warn('⚠️  No post URLs discovered on any page. A 200 response with zero links usually means the upstream served a bot-challenge page to this IP — the saved cookie authenticates the WordPress session but does not satisfy a Cloudflare challenge.');
   }
 
   // 2. Fetch RSS feed as backup
