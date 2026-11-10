@@ -1,6 +1,7 @@
 node_modules/
 **/.env
 **/.session.json
+scraper/.session.enc
 data/cache/
 data/images/
 data/posts/
@@ -8,11 +9,28 @@ data/scrape.log
 data/*.log
 .wrangler/
 .next/
-out/
-site/scripts/preview-server.mjs
+# Pinned to the site build output only: a bare `out/` also swallowed any
+# unrelated out/ folder (e.g. agent-prompts/out/) from version control.
+/site/out/
+*.tsbuildinfo
 site/scripts/review-shots/
+scraper/extracted_subtitles/
+scraper/temp_work/
 _*.png
 *.txt
 site/*.txt
 site/scripts/*.txt
 site/scripts/*.cjs
+# The blanket *.txt / _*.png rules above are for scratch output, but they must
+# never swallow a deployable asset in site/public (robots.txt, _headers-style
+# files). Verified with: git check-ignore -v site/public/robots.txt
+!site/public/*.txt
+!site/public/_*.png
+
+# Scraper diagnostics: written on every run, never read by the site or the
+# build. Kept out of version control so stale empty arrays aren't committed.
+data/image_failures.json
+data/optimize_failures.json
+data/scrape_failures.json
+data/pages/_footer.json
+data/pages/_banners_raw.json
