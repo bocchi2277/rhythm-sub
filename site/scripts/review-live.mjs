@@ -1,14 +1,47 @@
-// Visual review sweep of the live site: screenshots + layout sanity checks
-import { chromium } from 'file:///C:/Users/mohamed/pw-verify/node_modules/playwright-core/index.mjs';
+// Visual review sweep of SITE_URL: screenshots + layout sanity checks
 import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const BASE = 'https://rhythm-sub.pages.dev';
-const OUT = 'D:/rhythm/site/scripts/review-shots';
+// PLAYWRIGHT_MODULE may be a package name or an absolute path (Windows absolute
+// paths need a file:// URL for ESM import()).
+const pwSpec = process.env.PLAYWRIGHT_MODULE ?? 'playwright-core';
+const pwUrl = path.isAbsolute(pwSpec) ? pathToFileURL(path.join(pwSpec, 'index.mjs')).href : pwSpec;
+
+let chromium;
+try {
+  ({ chromium } = await import(pwUrl));
+} catch {
+  console.error(`Missing browser driver: cannot resolve '${pwSpec}'.`);
+  console.error('Fix: npm i -D playwright-core@1.64.1 (matches preinstalled chromium-1248), or set PLAYWRIGHT_MODULE to an existing install, or `npx playwright-core install chromium`.');
+  try {
+    const cache = path.join(process.env.LOCALAPPDATA ?? '', 'ms-playwright');
+    if (fs.existsSync(cache)) console.error('Installed browser revisions:', fs.readdirSync(cache).join(', '));
+  } catch { /* best effort */ }
+  process.exit(1);
+}
+
+const BASE = process.env.SITE_URL ?? 'https://rhythm-sub.pages.dev';
+const OUT = path.resolve(process.env.SHOT_DIR ?? 'scripts/review-shots');
 fs.mkdirSync(OUT, { recursive: true });
+
+// Resolve a live anime path from the homepage — the dataset evolves and the old
+// hardcoded slug (/anime/clevatess/) is gone. ANIME_PATH overrides if set.
+let animeUrl = process.env.ANIME_PATH ?? null;
+if (!animeUrl) {
+  try {
+    const home = await (await fetch(BASE + '/')).text();
+    const m = home.match(/\/anime\/[a-z0-9-]+\//);
+    animeUrl = m ? m[0] : null;
+  } catch (e) {
+    console.error('could not resolve a live anime path from the homepage:', e.message);
+    animeUrl = null;
+  }
+}
 
 const pages = [
   { name: 'home', url: '/' },
-  { name: 'anime', url: '/anime/clevatess/' },
+  ...(animeUrl ? [{ name: 'anime', url: animeUrl }] : []),
   { name: 'list', url: '/list/' },
   { name: 'series', url: '/series/' },
   { name: 'schedule', url: '/schedule/' },

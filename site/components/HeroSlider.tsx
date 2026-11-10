@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cssUrl } from '@/lib/css-url';
 
 export type HeroSlide = {
   slug: string;
@@ -16,40 +17,74 @@ export type HeroSlide = {
 
 export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const [idx, setIdx] = useState(0);
+  // WCAG 2.2.2: auto-advancing content must be pausable. Hover/focus pause is
+  // transient; the toggle button sets an explicit, sticky pause. Reduced-motion
+  // users get no autoplay at all.
+  const [userPaused, setUserPaused] = useState(false);
+  const [hoverPaused, setHoverPaused] = useState(false);
+  const autoplay = !userPaused && !hoverPaused;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const next = useCallback(() => setIdx((i) => (i + 1) % slides.length), [slides.length]);
-  const prev = useCallback(() => setIdx((i) => (i - 1 + slides.length) % slides.length), [slides.length]);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setUserPaused(true);
+  }, []);
+
+  const next = useCallback(
+    () => {
+      if (slides.length <= 1) return;
+      setIdx((i) => (i + 1) % slides.length);
+    },
+    [slides.length]
+  );
+  const prev = useCallback(
+    () => {
+      if (slides.length <= 1) return;
+      setIdx((i) => (i - 1 + slides.length) % slides.length);
+    },
+    [slides.length]
+  );
 
   useEffect(() => {
+    if (slides.length <= 1 || !autoplay) return;
     timer.current = setInterval(next, 6000);
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [next]);
+  }, [next, slides.length, autoplay]);
 
   function manual(fn: () => void) {
     if (timer.current) clearInterval(timer.current);
     fn();
-    timer.current = setInterval(next, 6000);
+    if (slides.length > 1 && autoplay) timer.current = setInterval(next, 6000);
   }
 
   if (!slides.length) return null;
-  const s = slides[idx];
+  // Clamp: idx can exceed bounds if the slides prop ever shrinks between renders
+  const s = slides[Math.min(idx, slides.length - 1)];
 
   return (
-    <section className="relative mt-6 rounded-3xl overflow-hidden border border-edge fade-up min-h-[340px]">
+    <section
+      className="relative mt-6 rounded-3xl overflow-hidden border border-edge fade-up min-h-[340px]"
+      aria-roledescription="carousel"
+      aria-label="أبرز الأعمال"
+      onMouseEnter={() => setHoverPaused(true)}
+      onMouseLeave={() => setHoverPaused(false)}
+      onFocusCapture={() => setHoverPaused(true)}
+      onBlurCapture={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHoverPaused(false);
+      }}
+    >
       <div
         key={s.slug}
         className="absolute inset-0 bg-cover bg-center opacity-30 blur-lg scale-110 transition-all duration-700"
-        style={{ backgroundImage: `url('${encodeURI(s.cover)}')` }}
+        style={{ backgroundImage: `url('${cssUrl(s.cover)}')` }}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/85 to-bg/40" />
 
       <div className="relative p-6 pb-14 md:p-10 md:pb-12 grid md:grid-cols-[200px_1fr] gap-6 items-end min-h-[360px]">
         <div className="hidden md:block relative w-[200px] aspect-[2/3] rounded-2xl overflow-hidden border border-edge shadow-[0_20px_50px_rgba(0,0,0,.6)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={s.cover} alt={s.title} className="w-full h-full object-cover" />
+          <img src={s.cover} alt={s.title} decoding="async" className="w-full h-full object-cover" />
         </div>
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs mb-3">
@@ -106,13 +141,26 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         </button>
       </div>
 
-      {/* Centered Pagination Dots */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-        {slides.map((_, i) => (
+      {/* Centered Pagination Dots + autoplay toggle (WCAG 2.2.2) */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10 items-center">
+        <button
+          onClick={() => setUserPaused((v) => !v)}
+          aria-pressed={userPaused}
+          aria-label={userPaused ? 'تشغيل العرض التلقائي' : 'إيقاف العرض التلقائي'}
+          className="w-6 h-6 mr-1 rounded-full glass border border-edge grid place-items-center hover:border-accent hover:text-accent transition-colors"
+        >
+          {userPaused ? (
+            <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current"><path d="M8 5v14l11-7z" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+          )}
+        </button>
+        {slides.map((slide, i) => (
           <button
-            key={i}
+            key={slide.slug}
             onClick={() => manual(() => setIdx(i))}
             aria-label={`شريحة ${i + 1}`}
+            aria-current={i === idx}
             className={`h-1.5 rounded-full transition-all duration-300 ${
               i === idx ? 'w-6 bg-accent' : 'w-1.5 bg-muted/40 hover:bg-muted'
             }`}

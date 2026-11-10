@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 const NAV = [
   { href: '/', label: 'الرئيسية' },
@@ -19,18 +19,94 @@ const ABOUT_LINKS = [
   { href: '/support', label: 'الدعم الفني' }
 ];
 
+/**
+ * Hover/focus/click dropdown. Previously reveal relied on `group-hover` CSS
+ * only, so keyboard users got a focusable button that did nothing and the
+ * menu links were `visibility:hidden` — unreachable by Tab entirely.
+ */
+function NavDropdown({ label, links }: { label: string; links: { href: string; label: string }[] }) {
+  // open = pinned (click/tap/keyboard toggle) || transient hover/focus.
+  // Blindly toggling on click made a touchscreen tap a no-op (synthetic
+  // mouseenter opened, then click toggled it shut).
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const open = pinned || hovered;
+  const menuId = useId();
+  return (
+    <div
+      className="relative group"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setHovered(false);
+          setPinned(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setPinned((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setPinned(false);
+            setHovered(false);
+          }
+        }}
+        className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap flex items-center gap-1"
+      >
+        {label}
+        <svg
+          viewBox="0 0 24 24"
+          className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      <div
+        id={menuId}
+        className={`absolute top-full start-0 pt-1 transition-opacity duration-200 ${
+          open ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'
+        }`}
+      >
+        <div className="glass border border-edge rounded-2xl p-1.5 min-w-[150px] shadow-2xl">
+          {links.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              onClick={() => {
+                setPinned(false);
+                setHovered(false);
+              }}
+              className="block px-3 py-2 rounded-xl text-sm hover:bg-card hover:text-accent focus-visible:bg-card focus-visible:text-accent outline-none transition-colors whitespace-nowrap"
+            >
+              {n.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Logo({ size = 'h-10' }: { size?: string }) {
   return (
     <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label="Rhythm-Sub">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/favicon-192.png" alt="Rhythm-Sub" className={`${size} w-auto`} />
+      <img src="/favicon-192.png" alt="Rhythm-Sub" width={192} height={192} className={`${size} w-auto`} />
     </Link>
   );
 }
 
 function SearchForm({ className = '' }: { className?: string }) {
   return (
-    <form action="/search" method="GET" className={`relative ${className}`}>
+    <form action="/search/" method="GET" role="search" className={`relative ${className}`}>
       <input
         type="search"
         name="q"
@@ -65,40 +141,8 @@ export default function Header() {
               {n.label}
             </Link>
           ))}
-          <div className="relative group">
-            <button className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap flex items-center gap-1">
-              قوائم أنمي
-              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-            <div className="absolute top-full start-0 pt-1 opacity-0 invisible translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200">
-              <div className="glass border border-edge rounded-2xl p-1.5 min-w-[150px] shadow-2xl">
-                {LIST_LINKS.map((n) => (
-                  <Link key={n.href} href={n.href} className="block px-3 py-2 rounded-xl text-sm hover:bg-card hover:text-accent transition-colors whitespace-nowrap">
-                    {n.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="relative group">
-            <button className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap flex items-center gap-1">
-              عن الفريق
-              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-            <div className="absolute top-full start-0 pt-1 opacity-0 invisible translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200">
-              <div className="glass border border-edge rounded-2xl p-1.5 min-w-[150px] shadow-2xl">
-                {ABOUT_LINKS.map((n) => (
-                  <Link key={n.href} href={n.href} className="block px-3 py-2 rounded-xl text-sm hover:bg-card hover:text-accent transition-colors whitespace-nowrap">
-                    {n.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </div>
+          <NavDropdown label="قوائم أنمي" links={LIST_LINKS} />
+          <NavDropdown label="عن الفريق" links={ABOUT_LINKS} />
           <Link href="/random" className="px-3 py-2 rounded-lg hover:text-ink hover:bg-card transition-colors whitespace-nowrap">
             فاجئني 🎲
           </Link>
@@ -111,8 +155,12 @@ export default function Header() {
         </div>
         <button
           onClick={() => setOpen(!open)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setOpen(false);
+          }}
           aria-label={open ? 'إغلاق القائمة' : 'فتح القائمة'}
           aria-expanded={open}
+          aria-controls="mobile-menu"
           className="lg:hidden relative ms-auto w-10 h-10 grid place-items-center rounded-xl border border-edge hover:border-accent transition-colors shrink-0"
         >
           <span className="relative block w-5 h-5">
@@ -136,8 +184,9 @@ export default function Header() {
       </div>
 
       <div
+        id="mobile-menu"
         className={`lg:hidden overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${
-          open ? 'max-h-[480px] opacity-100 border-t border-edge/60' : 'max-h-0 opacity-0'
+          open ? 'max-h-[480px] opacity-100 border-t border-edge/60 visible' : 'max-h-0 opacity-0 invisible'
         }`}
       >
         <div className="px-4 py-3 space-y-1 glass">

@@ -13,47 +13,50 @@ function collectHtml(dir, acc = []) {
 }
 
 const files = collectHtml(OUT);
+if (files.length === 0) throw new Error(`No built HTML found under ${OUT}`);
+
 let changed = 0;
 let bytes = 0;
+const cssCache = new Map();
 
 for (const file of files) {
   let html = fs.readFileSync(file, 'utf8');
   const links = [...html.matchAll(/<link[^>]+href="(\/_next\/[^"]+\.css)"[^>]*>/g)];
+  const cssRefs = [...new Set([...html.matchAll(/\/_next\/static\/css\/[a-f0-9]+\.css/g)].map((m) => m[0]))];
 
-  if (!links.length && !html.includes('<style>') && html.includes('/_next/static/css/')) {
-    const cssRef = html.match(/\/_next\/static\/css\/([a-f0-9]+\.css)/);
-    if (cssRef) {
-      const cssPath = path.join(OUT, '_next', 'static', 'css', cssRef[1]);
-      let css = '';
-      try {
-        css = fs.readFileSync(cssPath, 'utf8');
-      } catch {}
-      if (css) {
-        html = html.replace('</head>', `<style>${css}</style></head>`);
-        bytes += css.length;
-        changed++;
-        fs.writeFileSync(file, html);
-        continue;
-      }
-    }
+  if (cssRefs.length === 0) {
+    throw new Error(`No compiled CSS reference found in ${path.relative(OUT, file)}`);
   }
 
-  if (!links.length) continue;
-
-  for (const m of links) {
-    const cssPath = path.join(OUT, ...m[1].split('/'));
-    let css = '';
-    try {
+  for (const ref of cssRefs) {
+    // Cache the compiled CSS: without it every page re-reads the same 42KB file.
+    let css = cssCache.get(ref);
+    if (!css) {
+      const cssPath = path.join(OUT, ...ref.split('/'));
       css = fs.readFileSync(cssPath, 'utf8');
-    } catch {
-      continue;
+      cssCache.set(ref, css);
     }
-    html = html.replace(m[0], `<style>${css}</style>`);
-    bytes += css.length;
+    if (!css.trim()) throw new Error(`Empty compiled CSS: ${ref}`);
+    const safeCss = css.replace(/<\/style/gi, '<\\/style');
+    const style = `<style>${safeCss}</style>`;
+    const before = html;
+    for (const m of links.filter((l) => l[1] === ref)) {
+      html = html.replace(m[0], () => style);
+    }
+    if (html === before && !html.includes('<style>')) {
+      html = html.replace('</head>', () => `${style}</head>`);
+    }
+    bytes += safeCss.length;
   }
 
+  if (!html.includes('<style>')) {
+    throw new Error(`CSS was not inlined into ${path.relative(OUT, file)}`);
+  }
   fs.writeFileSync(file, html);
   changed++;
 }
 
+if (changed !== files.length) {
+  throw new Error(`Only inlined CSS into ${changed}/${files.length} pages`);
+}
 console.log(`inlined CSS into ${changed}/${files.length} pages (+${(bytes / 1048576).toFixed(1)}MB total)`);

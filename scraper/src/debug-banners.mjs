@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import * as cheerio from 'cheerio';
 
-const html = fs.readFileSync('C:/Users/mohamed/AppData/Local/Temp/opencode/rhythm_home.html', 'utf8');
+const htmlPath = process.argv[2];
+if (!htmlPath) {
+  console.error('Usage: node src/debug-banners.mjs <path-to-html-file>');
+  process.exit(1);
+}
+const html = fs.readFileSync(htmlPath, 'utf8');
 const $ = cheerio.load(html);
 
 $('a[href] img').each((_, img) => {

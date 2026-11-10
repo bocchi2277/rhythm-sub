@@ -13,6 +13,14 @@ function letterOf(title: string): string {
   return '#';
 }
 
+// '#' and '0-9' are not valid in URL fragments without encoding; map them
+// to fragment-safe ids ('hash' / '09') so the anchor actually scrolls.
+function anchorId(l: string): string {
+  if (l === '#') return 'hash';
+  if (l === '0-9') return '09';
+  return l;
+}
+
 const ORDER: string[] = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '0-9', '#'];
 
 export default function ListPage() {
@@ -31,7 +39,7 @@ export default function ListPage() {
 
       <nav className="sticky top-[68px] z-30 glass border border-edge rounded-2xl p-2 flex flex-wrap gap-1 mb-8">
         {present.map((l) => (
-          <a key={l} href={`#L-${l}`} className="w-9 h-9 grid place-items-center rounded-lg text-sm font-bold hover:bg-card hover:text-accent transition-colors">
+          <a key={l} href={`#L-${anchorId(l)}`} className="w-9 h-9 grid place-items-center rounded-lg text-sm font-bold hover:bg-card hover:text-accent transition-colors">
             {l}
           </a>
         ))}
@@ -40,7 +48,7 @@ export default function ListPage() {
       <div className="space-y-12">
         {present.map((l) => (
           <section key={l}>
-            <h2 id={`L-${l}`} className="text-xl font-bold mb-5 scroll-mt-32 flex items-center gap-3">
+            <h2 id={`L-${anchorId(l)}`} className="text-xl font-bold mb-5 scroll-mt-32 flex items-center gap-3">
               <span className="btn-accent w-9 h-9 rounded-xl grid place-items-center text-sm">{l}</span>
               <span className="text-muted text-sm font-normal">({groups.get(l)!.length})</span>
             </h2>

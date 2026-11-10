@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { formatDateAr } from '@/lib/format';
 
 export type EpisodeCardItem = {
   slug: string;
@@ -21,6 +22,7 @@ export default function EpisodeCard({ item }: { item: EpisodeCardItem }) {
           src={item.image}
           alt={item.badge ? `${item.title} - ${item.badge}` : item.title}
           loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
@@ -36,7 +38,7 @@ export default function EpisodeCard({ item }: { item: EpisodeCardItem }) {
         </h3>
         {item.date && (
           <p className="text-xs text-muted mt-1">
-            {new Intl.DateTimeFormat('ar', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(item.date))}
+            {formatDateAr(item.date)}
           </p>
         )}
       </div>

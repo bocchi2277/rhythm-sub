@@ -1,12 +1,17 @@
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const OUT_DIR = path.resolve('extracted_subtitles');
 
-function run(cmd, opts = {}) {
-  console.log(`> ${cmd}`);
-  return execSync(cmd, { stdio: 'inherit', ...opts });
+// Run an external binary with an argv array. Never build a shell string from
+// user/scraped input (URLs, filenames) — that is a command-injection sink.
+function run(cmd, args) {
+  console.log(`> ${cmd} ${args.join(' ')}`);
+  const res = spawnSync(cmd, args, { stdio: 'inherit' });
+  if (res.error) throw res.error;
+  if (res.status !== 0) throw new Error(`${cmd} exited with code ${res.status}`);
+  return res;
 }
 
 // Recursively find all video files in a directory tree
@@ -59,10 +64,24 @@ function sanitizeFilename(name) {
     .trim();
 }
 
+// Validate BEFORE any rmSync: a dot-only or empty sanitized name would resolve
+// to OUT_DIR itself (or walk out of it) and the recursive delete would wipe
+// the wrong directory. Pure + exported for tests.
+export function safeOutputName(name) {
+  const cleaned = sanitizeFilename(name || 'Subtitles_Batch');
+  if (!cleaned || /^\.+$/.test(cleaned)) {
+    throw new Error(`Refusing unsafe output name: ${JSON.stringify(name ?? '')}`);
+  }
+  return cleaned;
+}
+
 async function resolveMediafireDirectUrl(mfUrl) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);
   try {
     const res = await fetch(mfUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: ctrl.signal
     });
     const html = await res.text();
     const match = html.match(/href=["'](https?:\/\/[^"']*mediafire\.com\/[^"']*\/[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)["']/i) ||
@@ -71,192 +90,203 @@ async function resolveMediafireDirectUrl(mfUrl) {
     if (match) return match[1];
   } catch (e) {
     console.warn('Could not scrape MediaFire direct link:', e.message);
+  } finally {
+    clearTimeout(t);
   }
   return mfUrl;
 }
 
 export async function extractSubtitles(rawUrl, outputName) {
   let inputUrl = normalizeUrl(rawUrl);
+
+  // Reject unsafe names before creating or deleting anything.
+  const safeBundleName = safeOutputName(outputName);
+
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const workDir = path.resolve('temp_work');
   if (fs.existsSync(workDir)) fs.rmSync(workDir, { recursive: true, force: true });
   fs.mkdirSync(workDir, { recursive: true });
 
-  const safeBundleName = sanitizeFilename(outputName || 'Subtitles_Batch');
-  const targetSubDir = path.join(OUT_DIR, safeBundleName);
-  if (fs.existsSync(targetSubDir)) fs.rmSync(targetSubDir, { recursive: true, force: true });
-  fs.mkdirSync(targetSubDir, { recursive: true });
-  const fontsDir = path.join(targetSubDir, 'fonts');
-  fs.mkdirSync(fontsDir, { recursive: true });
+  // Guarantee temp_work cleanup on EVERY failure path (download errors, no
+  // video files, extraction crashes), not just on success.
+  try {
+    const targetSubDir = path.join(OUT_DIR, safeBundleName);
+    if (fs.existsSync(targetSubDir)) fs.rmSync(targetSubDir, { recursive: true, force: true });
+    fs.mkdirSync(targetSubDir, { recursive: true });
+    const fontsDir = path.join(targetSubDir, 'fonts');
+    fs.mkdirSync(fontsDir, { recursive: true });
 
-  console.log(`\n======================================================`);
-  console.log(`🎬 Target: ${safeBundleName}`);
-  console.log(`🔗 Input URL: ${inputUrl}`);
-  console.log(`======================================================\n`);
+    console.log(`\n======================================================`);
+    console.log(`🎬 Target: ${safeBundleName}`);
+    console.log(`🔗 Input URL: ${inputUrl}`);
+    console.log(`======================================================\n`);
 
-  // 1. Download source files based on service
-  if (inputUrl.startsWith('magnet:') || inputUrl.includes('.torrent') || inputUrl.includes('nyaa.si')) {
-    console.log('📥 Downloading via BitTorrent (aria2c)...');
-    const ariaArgs = [
-      '--seed-time=0',
-      '--summary-interval=10',
-      '--file-allocation=none',
-      '--bt-max-peers=128',
-      '--bt-tracker-connect-timeout=10',
-      '--bt-tracker-timeout=15',
-      '--max-connection-per-server=16',
-      '--split=16',
-      `--dir="${workDir}"`,
-      `"${inputUrl}"`
-    ].join(' ');
-    run(`aria2c ${ariaArgs}`);
-  } else if (inputUrl.includes('drive.google.com')) {
-    console.log('📥 Downloading from Google Drive (gdown)...');
-    run(`gdown "${inputUrl}" -O "${workDir}/" --fuzzy ${inputUrl.includes('/folders/') ? '--folder' : ''}`);
-  } else if (inputUrl.includes('mediafire.com')) {
-    console.log('📥 Resolving and downloading from MediaFire...');
-    const directMf = await resolveMediafireDirectUrl(inputUrl);
-    console.log(`Direct MediaFire link: ${directMf}`);
-    run(`aria2c --dir="${workDir}" --file-allocation=none --summary-interval=10 "${directMf}"`);
-  } else if (inputUrl.includes('mega.nz')) {
-    console.log('📥 Downloading from MEGA...');
-    try {
-      run(`megatools dl --path "${workDir}" "${inputUrl}"`);
-    } catch (e) {
-      console.log('Megatools fallback: trying python mega-download...');
-      run(`python3 -c "from mega import Mega; m = Mega(); m.login(); m.download_url('${inputUrl}', '${workDir}')"`);
+    // 1. Download source files based on service
+    if (inputUrl.startsWith('magnet:') || inputUrl.includes('.torrent') || inputUrl.includes('nyaa.si')) {
+      console.log('📥 Downloading via BitTorrent (aria2c)...');
+      const ariaArgs = [
+        '--seed-time=0',
+        '--summary-interval=10',
+        '--file-allocation=none',
+        '--bt-max-peers=128',
+        '--bt-tracker-connect-timeout=10',
+        '--bt-tracker-timeout=15',
+        '--max-connection-per-server=16',
+        '--split=16',
+        `--dir=${workDir}`,
+        inputUrl
+      ];
+      run('aria2c', ariaArgs);
+    } else if (inputUrl.includes('drive.google.com')) {
+      console.log('📥 Downloading from Google Drive (gdown)...');
+      const gdownArgs = [inputUrl, '-O', `${workDir}/`, '--fuzzy'];
+      if (inputUrl.includes('/folders/')) gdownArgs.push('--folder');
+      run('gdown', gdownArgs);
+    } else if (inputUrl.includes('mediafire.com')) {
+      console.log('📥 Resolving and downloading from MediaFire...');
+      const directMf = await resolveMediafireDirectUrl(inputUrl);
+      console.log(`Direct MediaFire link: ${directMf}`);
+      run('aria2c', ['--dir=' + workDir, '--file-allocation=none', '--summary-interval=10', directMf]);
+    } else if (inputUrl.includes('mega.nz')) {
+      console.log('📥 Downloading from MEGA...');
+      try {
+        run('megatools', ['dl', '--path', workDir, inputUrl]);
+      } catch (e) {
+        console.log('Megatools fallback: trying python mega-download...');
+        const script = `from mega import Mega; m = Mega(); m.login(); m.download_url(${JSON.stringify(inputUrl)}, ${JSON.stringify(workDir)})`;
+        run('python3', ['-c', script]);
+      }
+    } else if (inputUrl.startsWith('http')) {
+      console.log('📥 Downloading direct URL via aria2c...');
+      run('aria2c', ['--dir=' + workDir, '--file-allocation=none', '--summary-interval=10', inputUrl]);
+    } else {
+      // Local path
+      if (fs.existsSync(inputUrl)) {
+        const dest = path.join(workDir, path.basename(inputUrl));
+        fs.copyFileSync(inputUrl, dest);
+      }
     }
-  } else if (inputUrl.startsWith('http')) {
-    console.log('📥 Downloading direct URL via aria2c...');
-    run(`aria2c --dir="${workDir}" --file-allocation=none --summary-interval=10 "${inputUrl}"`);
-  } else {
-    // Local path
-    if (fs.existsSync(inputUrl)) {
-      const dest = path.join(workDir, path.basename(inputUrl));
-      fs.copyFileSync(inputUrl, dest);
+
+    // 2. Discover all video files recursively
+    const videoFiles = findAllVideoFiles(workDir);
+    if (videoFiles.length === 0) {
+      throw new Error('❌ No video files (.mkv / .mp4 / .avi / .webm) found in download.');
     }
-  }
 
-  // 2. Discover all video files recursively
-  const videoFiles = findAllVideoFiles(workDir);
-  if (videoFiles.length === 0) {
-    throw new Error('❌ No video files (.mkv / .mp4 / .avi / .webm) found in download.');
-  }
+    console.log(`\n📦 Discovered ${videoFiles.length} video file(s) in batch:`);
+    for (let i = 0; i < videoFiles.length; i++) {
+      const sizeMb = (fs.statSync(videoFiles[i]).size / (1024 * 1024)).toFixed(1);
+      console.log(`   [${i + 1}/${videoFiles.length}] ${path.basename(videoFiles[i])} (${sizeMb} MB)`);
+    }
 
-  console.log(`\n📦 Discovered ${videoFiles.length} video file(s) in batch:`);
-  for (let i = 0; i < videoFiles.length; i++) {
-    const sizeMb = (fs.statSync(videoFiles[i]).size / (1024 * 1024)).toFixed(1);
-    console.log(`   [${i + 1}/${videoFiles.length}] ${path.basename(videoFiles[i])} (${sizeMb} MB)`);
-  }
+    let totalSubsExtracted = 0;
+    let totalFontsExtracted = 0;
+    const seenFontNames = new Set();
 
-  let totalSubsExtracted = 0;
-  let totalFontsExtracted = 0;
-  const seenFontNames = new Set();
+    // 3. Process each video file and extract all subtitle tracks & fonts
+    for (let idx = 0; idx < videoFiles.length; idx++) {
+      const vFile = videoFiles[idx];
+      const baseName = path.basename(vFile, path.extname(vFile));
+      const cleanBaseName = sanitizeFilename(baseName);
 
-  // 3. Process each video file and extract all subtitle tracks & fonts
-  for (let idx = 0; idx < videoFiles.length; idx++) {
-    const vFile = videoFiles[idx];
-    const baseName = path.basename(vFile, path.extname(vFile));
-    const cleanBaseName = sanitizeFilename(baseName);
+      console.log(`\n------------------------------------------------------`);
+      console.log(`⚡ Processing [${idx + 1}/${videoFiles.length}]: ${baseName}`);
+      console.log(`------------------------------------------------------`);
 
-    console.log(`\n------------------------------------------------------`);
-    console.log(`⚡ Processing [${idx + 1}/${videoFiles.length}]: ${baseName}`);
-    console.log(`------------------------------------------------------`);
+      let mkvInfo = null;
+      try {
+        const infoRaw = spawnSync('mkvmerge', ['-J', vFile], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
+        if (infoRaw.stdout) {
+          mkvInfo = JSON.parse(infoRaw.stdout);
+        }
+      } catch { }
 
-    let mkvInfo = null;
+      if (mkvInfo && Array.isArray(mkvInfo.tracks)) {
+        const subTracks = mkvInfo.tracks.filter((t) => t.type === 'subtitles');
+        const attachments = (mkvInfo.attachments || []).filter((a) => /\.(ttf|otf|ttc|woff|woff2)$/i.test(a.file_name || ''));
+
+        console.log(`   Found ${subTracks.length} subtitle track(s) and ${attachments.length} font attachment(s).`);
+
+        // Extract subtitle tracks
+        for (const trk of subTracks) {
+          const codec = (trk.codec || '').toLowerCase();
+          const ext = codec.includes('subrip') || codec.includes('srt') ? 'srt' : 'ass';
+          const lang = trk.properties?.language || trk.properties?.language_ietf || 'und';
+          const trackTitle = trk.properties?.track_name ? sanitizeFilename(trk.properties.track_name) : '';
+          const isDefault = trk.properties?.default_track ? '_default' : '';
+          const suffix = trackTitle ? `_[${lang}]_[${trackTitle}]` : `_[${lang}]_track${trk.id}${isDefault}`;
+          const subOutFile = path.join(targetSubDir, `${cleanBaseName}${suffix}.${ext}`);
+
+          console.log(`   📝 Extracting Track #${trk.id} (${lang}${trackTitle ? ` - ${trackTitle}` : ''}) -> ${path.basename(subOutFile)}`);
+          try {
+            run('mkvextract', ['tracks', vFile, `${trk.id}:${subOutFile}`]);
+            totalSubsExtracted++;
+          } catch (e) {
+            console.warn(`   ⚠️ mkvextract failed for track ${trk.id}, trying ffmpeg...`);
+            try {
+              run('ffmpeg', ['-y', '-i', vFile, '-map', `0:${trk.id}`, '-c:s', 'copy', subOutFile]);
+              totalSubsExtracted++;
+            } catch (e2) {
+              console.error(`   ❌ Failed to extract track #${trk.id}`);
+            }
+          }
+        }
+
+        // Extract fonts
+        if (attachments.length > 0) {
+          const toExtract = [];
+          for (const att of attachments) {
+            const fName = sanitizeFilename(att.file_name || `font_${att.id}.ttf`);
+            if (!seenFontNames.has(fName.toLowerCase())) {
+              seenFontNames.add(fName.toLowerCase());
+              toExtract.push(`${att.id}:${path.join(fontsDir, fName)}`);
+            }
+          }
+          if (toExtract.length > 0) {
+            console.log(`   🔤 Extracting ${toExtract.length} new font(s) into fonts/`);
+            try {
+              run('mkvextract', ['attachments', vFile, ...toExtract]);
+              totalFontsExtracted += toExtract.length;
+            } catch (e) {
+              console.warn('   ⚠️ Font extraction skipped or partially failed:', e.message);
+            }
+          }
+        }
+      } else {
+        // Fallback to ffmpeg for mp4/non-mkv files
+        const fallbackAss = path.join(targetSubDir, `${cleanBaseName}.ass`);
+        console.log(`   ⚡ Extracting with FFmpeg -> ${path.basename(fallbackAss)}`);
+        try {
+          run('ffmpeg', ['-y', '-i', vFile, '-map', '0:s:0', '-c:s', 'copy', fallbackAss]);
+          totalSubsExtracted++;
+        } catch (e) {
+          console.warn(`   ⚠️ No subtitles found or FFmpeg extraction failed for ${baseName}`);
+        }
+      }
+    }
+
+    // 4. Clean up fonts folder if empty
     try {
-      const infoRaw = spawnSync('mkvmerge', ['-J', vFile], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
-      if (infoRaw.stdout) {
-        mkvInfo = JSON.parse(infoRaw.stdout);
+      if (fs.existsSync(fontsDir) && fs.readdirSync(fontsDir).length === 0) {
+        fs.rmdirSync(fontsDir);
       }
     } catch { }
 
-    if (mkvInfo && Array.isArray(mkvInfo.tracks)) {
-      const subTracks = mkvInfo.tracks.filter((t) => t.type === 'subtitles');
-      const attachments = (mkvInfo.attachments || []).filter((a) => /\.(ttf|otf|ttc|woff|woff2)$/i.test(a.file_name || ''));
+    // 5. Summary of results (temp video cleanup happens in finally)
+    console.log(`\n======================================================`);
+    console.log(`🎉 Extraction Summary for: ${safeBundleName}`);
+    console.log(`   - Episodes Processed: ${videoFiles.length}`);
+    console.log(`   - Subtitle Files Extracted: ${totalSubsExtracted}`);
+    console.log(`   - Unique Fonts Extracted: ${totalFontsExtracted}`);
+    console.log(`   📁 Output Folder: ${targetSubDir}`);
+    console.log(`======================================================\n`);
 
-      console.log(`   Found ${subTracks.length} subtitle track(s) and ${attachments.length} font attachment(s).`);
-
-      // Extract subtitle tracks
-      for (const trk of subTracks) {
-        const codec = (trk.codec || '').toLowerCase();
-        const ext = codec.includes('subrip') || codec.includes('srt') ? 'srt' : 'ass';
-        const lang = trk.properties?.language || trk.properties?.language_ietf || 'und';
-        const trackTitle = trk.properties?.track_name ? sanitizeFilename(trk.properties.track_name) : '';
-        const isDefault = trk.properties?.default_track ? '_default' : '';
-        const suffix = trackTitle ? `_[${lang}]_[${trackTitle}]` : `_[${lang}]_track${trk.id}${isDefault}`;
-        const subOutFile = path.join(targetSubDir, `${cleanBaseName}${suffix}.${ext}`);
-
-        console.log(`   📝 Extracting Track #${trk.id} (${lang}${trackTitle ? ` - ${trackTitle}` : ''}) -> ${path.basename(subOutFile)}`);
-        try {
-          run(`mkvextract tracks "${vFile}" ${trk.id}:"${subOutFile}"`);
-          totalSubsExtracted++;
-        } catch (e) {
-          console.warn(`   ⚠️ mkvextract failed for track ${trk.id}, trying ffmpeg...`);
-          try {
-            run(`ffmpeg -y -i "${vFile}" -map 0:${trk.id} -c:s copy "${subOutFile}"`);
-            totalSubsExtracted++;
-          } catch (e2) {
-            console.error(`   ❌ Failed to extract track #${trk.id}`);
-          }
-        }
-      }
-
-      // Extract fonts
-      if (attachments.length > 0) {
-        const toExtract = [];
-        for (const att of attachments) {
-          const fName = sanitizeFilename(att.file_name || `font_${att.id}.ttf`);
-          if (!seenFontNames.has(fName.toLowerCase())) {
-            seenFontNames.add(fName.toLowerCase());
-            toExtract.push(`${att.id}:"${path.join(fontsDir, fName)}"`);
-          }
-        }
-        if (toExtract.length > 0) {
-          console.log(`   🔤 Extracting ${toExtract.length} new font(s) into fonts/`);
-          try {
-            run(`mkvextract attachments "${vFile}" ${toExtract.join(' ')}`);
-            totalFontsExtracted += toExtract.length;
-          } catch (e) {
-            console.warn('   ⚠️ Font extraction skipped or partially failed:', e.message);
-          }
-        }
-      }
-    } else {
-      // Fallback to ffmpeg for mp4/non-mkv files
-      const fallbackAss = path.join(targetSubDir, `${cleanBaseName}.ass`);
-      console.log(`   ⚡ Extracting with FFmpeg -> ${path.basename(fallbackAss)}`);
-      try {
-        run(`ffmpeg -y -i "${vFile}" -map 0:s:0 -c:s copy "${fallbackAss}"`);
-        totalSubsExtracted++;
-      } catch (e) {
-        console.warn(`   ⚠️ No subtitles found or FFmpeg extraction failed for ${baseName}`);
-      }
-    }
+    return { targetSubDir, totalSubs: totalSubsExtracted, totalFonts: totalFontsExtracted };
+  } finally {
+    console.log('\n🧹 Cleaning up temporary video files from disk...');
+    fs.rmSync(workDir, { recursive: true, force: true });
   }
-
-  // 4. Clean up fonts folder if empty
-  try {
-    if (fs.existsSync(fontsDir) && fs.readdirSync(fontsDir).length === 0) {
-      fs.rmdirSync(fontsDir);
-    }
-  } catch { }
-
-  // 5. Clean up temporary video files to free disk space immediately
-  console.log('\n🧹 Cleaning up temporary video files from disk...');
-  fs.rmSync(workDir, { recursive: true, force: true });
-
-  // 6. Summary of results
-  console.log(`\n======================================================`);
-  console.log(`🎉 Extraction Summary for: ${safeBundleName}`);
-  console.log(`   - Episodes Processed: ${videoFiles.length}`);
-  console.log(`   - Subtitle Files Extracted: ${totalSubsExtracted}`);
-  console.log(`   - Unique Fonts Extracted: ${totalFontsExtracted}`);
-  console.log(`   📁 Output Folder: ${targetSubDir}`);
-  console.log(`======================================================\n`);
-
-  return { targetSubDir, totalSubs: totalSubsExtracted, totalFonts: totalFontsExtracted };
 }
 
 // Direct CLI Execution

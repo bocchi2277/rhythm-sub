@@ -9,7 +9,7 @@ export default function AboutPage() {
     <div className="max-w-4xl mx-auto px-4 mt-6">
       <div className="glass border border-edge rounded-3xl p-8 md:p-10 text-center fade-up">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Rhythm-Sub" className="h-20 w-auto mx-auto" />
+        <img src="/logo.png" alt="Rhythm-Sub" width={814} height={545} className="h-20 w-auto mx-auto" />
         <h1 className="text-3xl font-bold mt-4">{page?.title || 'من نحن'}</h1>
       </div>
 

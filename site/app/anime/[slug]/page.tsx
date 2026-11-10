@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { allSeries, bySlug, img } from '@/lib/data';
-import type { Episode } from '@/lib/data';
+import { allSeries, bySlug, byKey, img, cssUrl } from '@/lib/data';
 import AnimeCard from '@/components/AnimeCard';
 import EpisodeRow from '@/components/EpisodeRow';
 
@@ -13,15 +12,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const s = bySlug(slug);
   return { title: s?.title ?? 'غير موجود' };
-}
-
-function fmtDate(iso: string | null) {
-  if (!iso) return '';
-  try {
-    return new Intl.DateTimeFormat('ar', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
-  } catch {
-    return iso.slice(0, 10);
-  }
 }
 
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
@@ -39,14 +29,14 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
   const s = bySlug(slug);
   if (!s) notFound();
 
-  const related = (s.relatedSeries ?? []).map((k) => allSeries.find((x) => x.key === k)).filter(Boolean);
+  const related = (s.relatedSeries ?? []).map((k) => byKey(k)).filter(Boolean);
 
   return (
     <div>
       <div className="relative">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-25 blur-lg scale-110"
-          style={{ backgroundImage: `url('${encodeURI(img(s.cover))}')` }}
+          style={{ backgroundImage: `url('${cssUrl(img(s.cover))}')` }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-bg/50" />
         <div className="relative max-w-7xl mx-auto px-4 pt-6 md:pt-8 pb-6 grid lg:grid-cols-[240px_1fr] gap-5 lg:gap-6 items-start fade-up">
@@ -112,14 +102,14 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
             قائمة الحلقات والإصدارات ({s.episodes.length})
           </h2>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {s.episodes.map((ep) => (
-              <EpisodeRow key={`${ep.slug}-${ep.postId}`} ep={ep} typeText={s.type?.text} />
+            {s.episodes.map((ep, i) => (
+              <EpisodeRow key={`${ep.slug}-${ep.postId ?? 'team'}-${i}`} ep={ep} typeText={s.type?.text} seriesSlug={s.slug} />
             ))}
           </div>
         </section>
 
         <aside className="space-y-6 lg:sticky lg:top-24">
-          {s.trailerYoutubeId && (
+          {s.trailerYoutubeId && /^[A-Za-z0-9_-]{11}$/.test(s.trailerYoutubeId) && (
             <div className="rounded-2xl overflow-hidden border border-edge aspect-video">
               <iframe
                 src={`https://www.youtube-nocookie.com/embed/${s.trailerYoutubeId}`}

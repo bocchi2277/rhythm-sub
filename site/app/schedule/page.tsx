@@ -23,11 +23,11 @@ export default function SchedulePage() {
   const ongoingSeries = allSeries
     .filter((s) => /ongoing|airing|currently/i.test(s.status ?? ''))
     .filter((s) => !/END$/i.test(s.title) && !/movie|film|فيلم/i.test(s.type?.text ?? ''))
-    .filter((s) => !/BD|Vol\.|Blu-ray/i.test(s.title))
+    .filter((s) => !/\bBD\b|Vol\.|Blu-ray/i.test(s.title))
     .filter((s) => {
       const latest = s.episodes[0];
       if (!latest) return false;
-      if (/BD|Vol\./i.test(latest.displayNum ?? '')) return false;
+      if (/\bBD\b|Vol\./i.test(latest.displayNum ?? '')) return false;
       if (!latest.date) return false;
       return Date.now() - new Date(latest.date).getTime() < 21 * 24 * 3600 * 1000;
     })

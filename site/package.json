@@ -5,23 +5,25 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/inline-css.mjs",
-    "start": "next start"
+    "start": "node scripts/preview-server.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@keystatic/core": "^0.6.8",
-    "@keystatic/next": "^5.0.5",
-    "fuse.js": "^7.1.0",
-    "next": "^15.1.6",
+    "next": "^15.5.29",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "sanitize-html": "^2.18.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22",
     "@types/react": "^19",
-    "sharp": "^0.33.5",
+    "@types/sanitize-html": "^2.16.2",
+    "sharp": "^0.35.5",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5",
-    "wrangler": "^4.125.0"
+    "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "^8.5.32"
   }
 }

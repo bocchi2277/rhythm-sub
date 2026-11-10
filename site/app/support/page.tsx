@@ -1,4 +1,5 @@
 import { sitePage, mappedHtml, socials } from '@/lib/data';
+import { safeUrl } from '@/lib/url';
 
 export const metadata = { title: 'الدعم الفني' };
 
@@ -10,9 +11,10 @@ const SOCIAL_LABELS: Record<string, { label: string; icon: string }> = {
 
 export default function SupportPage() {
   const page = sitePage('support');
-  let html = mappedHtml(page?.contentHtml ?? '');
-  const hasForm = /<form[\s>]/i.test(html);
-  html = html.replace(/<form[\s\S]*?<\/form>/gi, '');
+  // The form flag is captured from the raw markup at load time, because
+  // sanitizePageHtml() strips <form> before this component ever runs.
+  const hasForm = page?.hasForm ?? false;
+  const html = mappedHtml(page?.contentHtml ?? '');
 
   return (
     <div className="max-w-4xl mx-auto px-4 mt-6">
@@ -21,10 +23,12 @@ export default function SupportPage() {
       <div className="grid sm:grid-cols-3 gap-3 mb-6">
         {socials.map((s) => {
           const meta = Object.entries(SOCIAL_LABELS).find(([k]) => s.href.includes(k))?.[1];
+          const href = safeUrl(s.href);
+          if (!href) return null;
           return (
             <a
               key={s.href}
-              href={s.href}
+              href={href}
               target="_blank"
               rel="noopener noreferrer"
               className="card-hover flex items-center justify-center gap-2 bg-card border border-edge rounded-2xl p-4 font-bold text-sm"

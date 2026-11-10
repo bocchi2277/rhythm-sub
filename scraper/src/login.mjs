@@ -1,22 +1,33 @@
-import { BASE, jar, postForm } from './http.mjs';
+import { BASE, UA, jar, postForm } from './http.mjs';
 import { loadEnv } from './util.mjs';
-
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36';
 
 export async function ensureSession({ force = false } = {}) {
   loadEnv();
   jar.load();
   if (!force && jar.has('wordpress_logged_in')) return true;
 
-  const user = process.env.RHYTHM_USER || 'amrm31638@gmail.com';
-  const pass = process.env.RHYTHM_PASS || '5NdrLv6Ln!S5VVr(02PGgu99';
-  if (!user || !pass) throw new Error('RHYTHM_USER / RHYTHM_PASS missing');
+  const user = process.env.RHYTHM_USER;
+  const pass = process.env.RHYTHM_PASS;
+  if (!user || !pass) {
+    throw new Error(
+      'RHYTHM_USER / RHYTHM_PASS are not set. Add them to scraper/.env (local) or GitHub Actions secrets (CI).'
+    );
+  }
 
   // Prime cookies (Cloudflare clearance: cf_clearance, __cf_bm) before POST —
   // fresh CI runners have no saved jar, and posting without them gets challenged.
-  const pre = await fetch(`${BASE}/wp-login.php`, { headers: { 'User-Agent': UA } });
-  jar.absorb(pre);
-  await pre.arrayBuffer().catch(() => {});
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const pre = await fetch(`${BASE}/wp-login.php`, {
+      headers: { 'User-Agent': UA },
+      signal: ctrl.signal
+    });
+    jar.absorb(pre);
+    await pre.arrayBuffer().catch(() => {});
+  } finally {
+    clearTimeout(t);
+  }
 
   const res = await postForm(`${BASE}/wp-login.php`, {
     log: user,

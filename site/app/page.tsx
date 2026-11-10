@@ -51,7 +51,10 @@ export default function Home() {
         <SectionTitle title="آخر الحلقات" />
         <LatestEpisodes
           items={
-            recent.map(({ series, ep }): EpisodeCardItem => {
+            /* Only serialize the newest 135 releases to the client
+               (15 pages × 9/page). Passing all ~1027 episodes would embed
+               hundreds of KB of JSON into the RSC payload for a homepage. */
+            recent.slice(0, 135).map(({ series, ep }): EpisodeCardItem => {
               /* Pick a unique per-episode image: prefer contentImages (episode screenshots)
                  over the shared series cover to avoid duplicate images in the grid */
               const validContentImg = ep.contentImages?.find(
