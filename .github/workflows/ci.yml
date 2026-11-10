@@ -1,0 +1,58 @@
+name: CI — tests, typecheck & build
+
+# Gate every push to main and every PR: the auto-sync pipeline publishes
+# scraped data straight to production, so main must always be buildable.
+# No secrets are exposed here — PRs run with read-only permissions only.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Superseded runs are cancelled: auto-sync pushes to main whenever new
+# episodes land, and a stale build of an older commit has no value.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            site/package-lock.json
+            scraper/package-lock.json
+
+      - name: Install site dependencies
+        run: cd site && npm ci
+
+      - name: Install scraper dependencies
+        run: cd scraper && npm ci
+
+      - name: Scraper tests (syntax + unit)
+        run: cd scraper && npm test
+
+      - name: Typecheck
+        run: cd site && npm run typecheck
+
+      - name: Build static export
+        run: cd site && npm run build
+
+      # Blocking gate: catches the Tailwind v4 failure mode where the theme
+      # compiles but every utility class is silently dead. Requires the build
+      # above (reads site/.next/static/css).
+      - name: CSS coverage gate
+        run: python3 site/scripts/check-css-coverage.py

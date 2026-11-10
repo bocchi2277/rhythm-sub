@@ -6,31 +6,72 @@ on:
     - cron: '*/30 * * * *'
   workflow_dispatch: # Allows manual trigger from GitHub Actions UI
 
+# Never let a scheduled run and a manual run overlap: both push to main and
+# force-push the sync-data snapshot branch.
+concurrency:
+  group: auto-sync-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Optional: enables the encrypted session cache. When unset, the cache
+      # restore/decrypt/encrypt steps are skipped and every run logs in fresh
+      # with RHYTHM_USER / RHYTHM_PASS.
+      RHYTHM_SESSION_KEY: ${{ secrets.RHYTHM_SESSION_KEY }}
+      # Optional: a browser cookie for rhythm-sub.com. Use this when
+      # wp-login.php is blocked for runner IPs (the scraper then authenticates
+      # with the cookie instead of logging in). Format: "name=value; name2=value2".
+      RHYTHM_COOKIE: ${{ secrets.RHYTHM_COOKIE }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: scraper/package-lock.json
 
       # Reuse login cookies across runs: fresh logins from datacenter IPs
       # are often challenged by Cloudflare, while a saved session just works.
-      - name: Restore session cache
-        uses: actions/cache@v4
+      # Only the ENCRYPTED session is cached (scraper/.session.enc); the
+      # plaintext .session.json never leaves the runner. A per-run key lets
+      # every run save refreshed cookies; restore-keys picks the newest one.
+      - name: Restore encrypted session cache
+        if: env.RHYTHM_SESSION_KEY != ''
+        # restore-only on purpose: actions/cache's own post step runs with
+        # post-if: success(), so it never saves when the job failed. The
+        # matching save step below is explicit and runs on failure too.
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: scraper/.session.json
-          key: rhythm-session-${{ github.run_id }}
+          path: scraper/.session.enc
+          key: rhythm-session-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: rhythm-session-
+
+      - name: Decrypt session
+        if: env.RHYTHM_SESSION_KEY != ''
+        run: |
+          if [ ! -f scraper/.session.enc ]; then
+            echo "No cached session; sync will log in fresh."
+            exit 0
+          fi
+          # -pass env: keeps the key out of argv and logs.
+          if openssl enc -aes-256-cbc -pbkdf2 -d -pass env:RHYTHM_SESSION_KEY \
+              -in scraper/.session.enc -out scraper/.session.json; then
+            echo "Cached session decrypted."
+          else
+            echo "::warning::Session decrypt failed (corrupt cache or rotated key); removing it and continuing with a fresh login."
+            rm -f scraper/.session.enc scraper/.session.json
+          fi
 
       # data/posts/ is gitignored but is REQUIRED input for build-model.mjs.
       # The full snapshot lives on the `sync-data` branch (seeded locally);
@@ -38,25 +79,61 @@ jobs:
       # other ~1000 (sync.mjs guards against this and fails loudly instead).
       - name: Restore posts snapshot
         run: |
-          git fetch origin sync-data --depth 1 || true
-          if git cat-file -e origin/sync-data:posts.tar.gz 2>/dev/null; then
-            git show origin/sync-data:posts.tar.gz > /tmp/posts.tar.gz
-            mkdir -p data/posts
-            tar -xzf /tmp/posts.tar.gz -C data
-            echo "Restored $(ls data/posts/*.json | wc -l) post files."
-          else
-            echo "::warning::No posts snapshot on sync-data branch; sync may refuse to rebuild."
+          fetched=0
+          for attempt in 1 2 3; do
+            if git fetch origin sync-data --depth 1; then fetched=1; break; fi
+            echo "fetch attempt $attempt failed; retrying in 5s..."
+            sleep 5
+          done
+          if [ "$fetched" != 1 ]; then
+            echo "::error::Could not fetch the sync-data snapshot branch after 3 attempts."
+            exit 1
           fi
+          if ! git cat-file -e origin/sync-data:posts.tar.gz 2>/dev/null; then
+            echo "::error::No posts snapshot on sync-data branch — sync will refuse to rebuild. Restore the snapshot first."
+            exit 1
+          fi
+          git show origin/sync-data:posts.tar.gz > /tmp/posts.tar.gz
+          # Reject unsafe archives BEFORE extraction: absolute/parent-escaping
+          # names, and symlink/hardlink entries (which could redirect writes
+          # outside data/posts). List to files first so grep -q cannot SIGPIPE
+          # tar and mask a failure.
+          tar -tzf /tmp/posts.tar.gz > /tmp/posts-names.txt
+          if grep -qE '(^/|(^|/)\.\.(/|$))' /tmp/posts-names.txt; then
+            echo "::error::posts.tar.gz contains absolute or parent-escaping paths; refusing to extract."
+            exit 1
+          fi
+          tar -tvzf /tmp/posts.tar.gz > /tmp/posts-verbose.txt
+          if grep -qE '^[lh]' /tmp/posts-verbose.txt; then
+            echo "::error::posts.tar.gz contains symlink/hardlink entries; refusing to extract."
+            exit 1
+          fi
+          mkdir -p data/posts
+          tar -xzf /tmp/posts.tar.gz -C data
+          RESTORED=$(find data/posts -name '*.json' | wc -l)
+          if [ "$RESTORED" -lt 1 ]; then
+            echo "::error::The snapshot restored 0 post files — refusing to continue."
+            exit 1
+          fi
+          # Integrity, not just count: sync.mjs only compares the NUMBER of
+          # post files against the number of known URLs, so a truncated or
+          # corrupt file would pass that guard and silently drop its episode
+          # from series.json. Parse every restored file before trusting it.
+          node -e "const fs=require('fs');const d='data/posts';const bad=[];for(const f of fs.readdirSync(d)){if(!f.endsWith('.json'))continue;try{JSON.parse(fs.readFileSync(d+'/'+f,'utf8'))}catch(e){bad.push(f)}}if(bad.length){console.error('::error::Corrupt post files in the snapshot: '+bad.slice(0,10).join(', '));process.exit(1)}"
+          echo "POSTS_RESTORED=$RESTORED" >> "$GITHUB_ENV"
+          echo "Restored $RESTORED post files."
 
       - name: Record HEAD
         run: echo "HEAD_BEFORE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Install dependencies
-        run: |
-          cd site && npm ci
-          cd ../scraper && npm install
+      - name: Install scraper dependencies
+        run: cd scraper && npm ci
 
-      - name: Check & Sync New Releases
+      - name: Syntax check scraper
+        run: node scraper/src/syntax-check.mjs
+
+      - name: Check & Sync New Releases (commit only)
+        id: sync_step
         env:
           RHYTHM_USER: ${{ secrets.RHYTHM_USER }}
           RHYTHM_PASS: ${{ secrets.RHYTHM_PASS }}
@@ -67,22 +144,105 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          node scraper/src/sync.mjs --push
+          # Commit locally only — the snapshot must be published BEFORE main
+          # is pushed (see the publish step below).
+          node scraper/src/sync.mjs --commit-only
 
-      # Keep the snapshot in lockstep with main as a single-commit orphan
-      # branch. Only runs when this job itself committed new data.
-      - name: Update posts snapshot
-        if: success()
+      # Encrypt whatever session exists (including cookies refreshed by this
+      # run) so the post-job cache save captures it. Runs even if sync failed:
+      # a partially refreshed session is still better than none.
+      - name: Encrypt session for cache
+        if: always() && env.RHYTHM_SESSION_KEY != ''
+        # Never let this auxiliary step block the publish: the data commit
+        # already succeeded and must still reach sync-data + main.
+        continue-on-error: true
         run: |
-          if [ "$(git rev-parse HEAD)" != "$HEAD_BEFORE" ]; then
-            tar -czf /tmp/posts-new.tar.gz -C data posts
-            git checkout --orphan tmp-snapshot
-            git rm -rf --cached . -q
-            cp /tmp/posts-new.tar.gz ./posts.tar.gz
-            git add posts.tar.gz
-            git commit -qm "posts snapshot $(date -u +%FT%TZ)"
-            git push --force origin tmp-snapshot:sync-data
-            git checkout -f main
+          if [ -f scraper/.session.json ]; then
+            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:RHYTHM_SESSION_KEY \
+              -in scraper/.session.json -out scraper/.session.enc
+            echo "Session encrypted for the cache save."
           else
-            echo "No new data committed; snapshot unchanged."
+            echo "No session file to encrypt."
           fi
+
+      # Explicit save (actions/cache's post step is success()-gated, so a
+      # failed job would drop a session that was refreshed successfully).
+      # The key is unique per run/attempt, so every run stores its own entry.
+      - name: Save encrypted session cache
+        if: always() && env.RHYTHM_SESSION_KEY != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: scraper/.session.enc
+          key: rhythm-session-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # The snapshot is the ONLY backup of the gitignored data/posts. Publish
+      # it to sync-data and verify the remote ref BEFORE pushing main, so a
+      # snapshot failure can never leave the published model ahead of its raw
+      # backup. When sync committed nothing, both pushes are skipped.
+      # The condition depends on the sync step alone: an unrelated failure
+      # (e.g. the session encryption) must not strand a good commit.
+      - name: Publish snapshot, then push main
+        if: steps.sync_step.outcome == 'success'
+        run: |
+          if [ "$(git rev-parse HEAD)" = "$HEAD_BEFORE" ]; then
+            echo "No new data committed; skipping snapshot and main pushes."
+            exit 0
+          fi
+          tar -czf /tmp/posts-new.tar.gz -C data posts
+          # The snapshot is the only copy of data/posts — never publish one
+          # that holds fewer posts than the one we restored, and never publish
+          # a tarball whose members are not valid JSON.
+          NEW_COUNT=$(tar -tzf /tmp/posts-new.tar.gz | grep -c '\.json$' || true)
+          if [ "$NEW_COUNT" -lt "${POSTS_RESTORED:-0}" ]; then
+            echo "::error::New snapshot holds $NEW_COUNT posts but $POSTS_RESTORED were restored — refusing to publish."
+            exit 1
+          fi
+          rm -rf /tmp/posts-verify
+          mkdir -p /tmp/posts-verify
+          tar -xzf /tmp/posts-new.tar.gz -C /tmp/posts-verify
+          node -e "const fs=require('fs');const d='/tmp/posts-verify/posts';const bad=[];for(const f of fs.readdirSync(d)){if(!f.endsWith('.json'))continue;try{JSON.parse(fs.readFileSync(d+'/'+f,'utf8'))}catch(e){bad.push(f)}}if(bad.length){console.error('::error::Corrupt post files in the new snapshot: '+bad.slice(0,10).join(', '));process.exit(1)}"
+
+          git worktree remove --force /tmp/snapshot-wt 2>/dev/null || true
+          rm -rf /tmp/snapshot-wt
+          fetched=0
+          for attempt in 1 2 3; do
+            if git fetch origin sync-data --depth 1; then fetched=1; break; fi
+            echo "snapshot fetch attempt $attempt failed; retrying in 5s..."
+            sleep 5
+          done
+          if [ "$fetched" != 1 ]; then
+            echo "::error::Could not fetch sync-data for the snapshot update."
+            exit 1
+          fi
+          git worktree add --detach /tmp/snapshot-wt origin/sync-data
+          trap 'cd "$GITHUB_WORKSPACE" 2>/dev/null || true; git worktree remove --force /tmp/snapshot-wt 2>/dev/null || true' EXIT
+          cd /tmp/snapshot-wt
+          # Keep sync-data a SINGLE-commit branch: start a fresh root commit
+          # instead of stacking every snapshot on the previous one, otherwise
+          # the branch accumulates one ~1MB tarball per successful sync.
+          git checkout --orphan snapshot-orphan
+          git rm -rf --cached . -q
+          cp /tmp/posts-new.tar.gz ./posts.tar.gz
+          git add posts.tar.gz
+          git commit -qm "posts snapshot $(date -u +%FT%TZ)"
+          SNAP_COMMIT=$(git rev-parse HEAD)
+          git push --force-with-lease origin HEAD:sync-data
+
+          # Verify the remote ref actually matches the commit we pushed.
+          REMOTE_SNAP=$(git ls-remote origin refs/heads/sync-data | cut -f1)
+          if [ "$REMOTE_SNAP" != "$SNAP_COMMIT" ]; then
+            echo "::error::sync-data remote ref does not match the pushed snapshot; refusing to push main."
+            exit 1
+          fi
+          echo "Snapshot published and verified on sync-data."
+
+          cd "$GITHUB_WORKSPACE"
+          # Re-fetch and verify our commit is still a fast-forward of the
+          # remote branch; refuse rather than overwrite a concurrent push.
+          git fetch origin "${GITHUB_REF_NAME}"
+          if ! git merge-base --is-ancestor "origin/${GITHUB_REF_NAME}" HEAD; then
+            echo "::error::origin/${GITHUB_REF_NAME} moved since this run started; refusing to push."
+            exit 1
+          fi
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "${GITHUB_REF_NAME} pushed — Cloudflare Pages will deploy."
