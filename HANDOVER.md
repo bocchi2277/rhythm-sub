@@ -10,6 +10,24 @@
 > - `sync.mjs` فيه حارس: يرفض إعادة البناء إن كانت ملفات posts أقل من الروابط المعروفة (بدل مسح series.json بصمت).
 > - `login.mjs` يمتص كوكيز Cloudflare الأولية قبل POST، والـworkflow يستخدم Secrets فقط (أُزيلت كلمة المرور المكشوفة من الملف — **غيّر كلمة مرور الموقع لأن القديمة في سجل git**).
 > - المطلوب في GitHub: Secrets باسم `RHYTHM_USER` و`RHYTHM_PASS` (Settings → Secrets → Actions).
+>
+> ## ملحق 2026-11-10 — تدقيق CI/المستودع (تصحيح وضع كاش الجلسة + نظافة المستودع)
+> - **حقيقة مؤكدة: خط المزامنة لم ينجح ولا مرة.** عبر API: 1462 تشغيل فاشل مقابل تشغيلين ناجحين فقط (كلاهما من workflow آخر اسمه "Extract Subtitles") — أي أن `auto-sync` لم ينشر شيئاً إطلاقاً. سبب الفشل المُسجَّل في السجل: `login failed (HTTP 403)` (تحدّي Cloudflare على POST تسجيل الدخول من IP مستودع GitHub).
+> - **معدّل التشغيل الفعلي 4–6 مرات/يوم وليس 48**: قِس آخر 100 تشغيل → فجوات 2.2–10.9 ساعة (وسيط ≈6.4 ساعة)، 3–8 تشغيلات يومياً. cron `*/30` ليس ضمانة.
+> - **كاش الجلسة لم يكن يعمل أصلاً**: `actions/cache` post step هو `post-if: success()` فلم يُحفظ الكاش أبداً (API: `total_cache_entries: 0`)، والتشغيل يفشل عند تسجيل الدخول قبل أي حفظ ⇒ استرجاع الجلسات مستحيل. الحل: `actions/cache/restore` + `actions/cache/save` صريح بـ`if: always()` (مفتاح `rhythm-session-<run_id>-<run_attempt>`).
+> - **لا تزال الجلسة المشفّرة فارغة**: أول تشغيل بعد النشر يحاول دخولاً جديداً ⇒ 403 ما لم ينجح امتصاص كوكيز Cloudflare (تعديل `login.mjs` غير المودع بعد) أو تُزرع جلسة صالحة يدوياً. **يجب زرع جلسة صالحة بعد أول نجاح، وإلا فشلت كل محاولة.**
+> - `auto-sync.yml`: شرط النشر صار `steps.sync_step.outcome == 'success'` (فشل خطوة تشفير الجلسة لا يعطّل نشر البيانات)، وتحقّق سلامة لكل ملفات posts المستعادة (`JSON.parse` لكل ملف) قبل الوثوق بها، وحارس عدد (لا تُنشر لقطة بأقل من عدد ما استُعيد)، وفرع `sync-data` يبقى **commit واحد** (orphan) بدل تكديس لقطة ~1MB في كل مزامنة.
+> - `ci.yml`: أضيف `concurrency` (إلغاء التشغيل المتقادم).
+> - `site/package.json`: أُزيل `wrangler` (غير مستخدم في الكود؛ 57 حزمة/~حجم كبير من `@cloudflare/workerd` و`@esbuild/*` كانت تُثبَّت في كل تشغيل CI). `npm ci` صار 111 حزمة بدل 168.
+> - `overrides.postcss` سليم ولا يحتاج تسجيلاً في القفل: npm لا يكتب `overrides` في `packages[""]` أصلاً (تحقّق: مشروع اختبار)، و`npm ci` ينجح بـnpm 10 وnpm 11.
+> - `.gitignore`: أُضيفت `!site/public/*.txt` و`!site/public/_*.png` حتى لا تبتلع القاعدة العامة `*.txt` ملفات النشر (مثل robots.txt) بصمت.
+> - **تنظيف PII**: حُذفت من هذه الوثيقة الإيميلات ومعرّف حساب Cloudflare واسم حساب GitHub (الريبو عام). ملاحظة: بيانات المؤلف في بيانات git (commit metadata) تبقى ظاهرة ولا تُزال إلا بإعادة كتابة التاريخ.
+>
+> ## ملحق 2026-11-09 — تحصين CI وترتيب النشر
+> - `ci.yml`: عمق جلب 1، كاش npm لقفلَي site وscraper، تثبيت scraper بـ`npm ci`، ثم `npm test` (صياغة + وحدات) وtypecheck وبناء الموقع، وأخيراً `python3 site/scripts/check-css-coverage.py` بوابة حاجزة. الصلاحيات contents:read وبلا أسرار في PRs.
+> - `auto-sync.yml`: المزامنة تلتزم محلياً فقط (`sync.mjs --commit-only`)؛ إن تغيّر HEAD تُحدَّث لقطة posts على `sync-data` في worktree معزول وتُدفع بـ`--force-with-lease` ويُتحقق أن المرجع البعيد يطابق الـcommit المدفوع، **ثم** يُدفع main — فشل اللقطة لا يترك النموذج المنشور بلا نسخة خام. لا تغيير في HEAD = تخطي الدفعَتين.
+> - كاش الجلسة صار مشفّراً: `scraper/.session.enc` (openssl AES-256-CBC + PBKDF2) بمفتاح من السر الاختياري `RHYTHM_SESSION_KEY`؛ مفتاح الكاش `rhythm-session-<run_id>` مع restore-keys `rhythm-session-` لالتقاط الكوكيز المحدَّثة. فشل الفك يحذف الملفات التالفة ويستمر بدخول جديد، وغياب السر يتخطى الكاش كلياً. أُزيل كاش `.session.json` النصي وكاش node_modules (استُبدل بكاش setup-node).
+> - فحص اللقطة قبل الفك يرفض الأسماء المطلقة/الهاربة إلى الأب ومدخلات symlink/hardlink، وجلب اللقطة يُعاد 3 محاولات.
 
 ---
 
@@ -17,12 +35,12 @@
 
 - **المطلوب من العميل:** بناء موقع جديد لفرقة ترجمة الأنمي العربية "Rhythm-Sub" كهدية لهم، لأن موقعهم الحالي (rhythm-sub.com — ووردبريس محمي بالكامل بتسجيل دخول) "عشوائي".
 - **المنهج:** سحب كل محتوى الموقع الأصلي بالجلسة المسجلة → بناء نموذج بيانات نظيف → موقع Next.js حديث → نشر على Cloudflare Pages.
-- **قرارات العميل المعتمدة:** Next.js + CMS، المحتوى فقط بلا تعليقات/حسابات قديمة، تنزيل كل الصور، استضافة Cloudflare (حساب موجود Bocchi2277@gmail.com)، خط IBM Plex Sans Arabic (رفض العميل Cairo لكونه "خط الـAI المستهلك")، تصميم داكن RTL بلمسات من ريفايف (تنظيم) ولازيسانو (زجاجية) وفينيكس (شرائط الجودة).
+- **قرارات العميل المعتمدة:** Next.js + CMS، المحتوى فقط بلا تعليقات/حسابات قديمة، تنزيل كل الصور، استضافة Cloudflare (حساب موجود — بيانات الدخول محفوظة خارج الريبو ولا تُذكر هنا)، خط IBM Plex Sans Arabic (رفض العميل Cairo لكونه "خط الـAI المستهلك")، تصميم داكن RTL بلمسات من ريفايف (تنظيم) ولازيسانو (زجاجية) وفينيكس (شرائط الجودة).
 - **مؤجل بطلب العميل:** نظام تسجيل الدخول الجديد، لوحة Keystatic الرسومية، الدومين الرسمي.
 
 ## 2. الحالة الحية الحالية (مُتحقق منها)
 
-- الرابط: https://rhythm-sub.pages.dev — مشروع Pages باسم `rhythm-sub` في حساب CF `df75b665820e04fb08bf71968f774774` (Bocchi2277@gmail.com).
+- الرابط: https://rhythm-sub.pages.dev — مشروع Pages باسم `rhythm-sub` في حساب CF واحد (معرّف الحساب وكلمة مروره محفوظان خارج الريبو؛ الريبو عام فلا تُذكر هنا).
 - مربوط بـGitHub: `bocchi2277/rhythm-sub` — أي `git push` إلى main = بناء ونشر تلقائي (~3 دقائق).
 - إعدادات بناء Pages: Build command: `cd site && npm ci && npm run build` — Output: `/site/out` — Node 22 (ملفا .nvmrc بالجذر).
 - 437 صفحة ثابتة. حساب CF يحوي أيضاً مشروعين آخرين (teahousesubs, teahouse-subs) **لا تلمسهما**.
@@ -44,7 +62,7 @@ D:\rhythm\
 │   │   ├── about/ + support/  # محتواهما الأصلي المسحوب من data/pages/ (about.json فيه حقل key!)
 │   │   └── layout.tsx         # هيدر (Header.tsx عميل: برجر→X متحرك، قوائم أنمي وعن الفريق منسدلتان، دخول بالقائمة آخرها) + فوتر (تصفح يمين/شعار وسط/فريق يسار على الحاسوب؛ توقيع "بكل فخر Rhythm-sub || Ox Alpha")
 │   ├── components/            # AnimeCard (clamp مضمون inline-style + fallback اسم بلا صورة)، EpisodeCard (عرضي 16:9 للرئيسية)، EpisodeRow (صف الحلقة بنمط ريفايف)، LatestEpisodes (ترقيم ذكي عميل)، HeroSlider (عشوائي 12، 6 ثوانٍ، أسهم)
-│   ├── lib/data.ts            # ⭐ قلب البيانات: يقرأ ../data/series.json + img-manifest + pages، منطق تقسيم الدفعات، franchises، currentProjects
+│   ├── lib/data.ts            # ⭐ قلب البيانات: يقرأ ../data/series.json + img-manifest + pages، franchises، currentProjects
 │   ├── public/img/            # 2083 صورة WebP محسّنة (~115MB)
 │   ├── public/img-manifest.json  # خريطة { رابط أصلي → /img/hash.webp }
 │   ├── public/fonts/          # IBM Plex Sans Arabic woff2 (arabic+latin 400/500/700) مستضافة ذاتياً
@@ -52,31 +70,31 @@ D:\rhythm\
 │   ├── scripts/               # optimize-images.mjs، download-images.mjs، inline-css.mjs (يُحقن CSS بكل صفحة — لا تعتمد على طلب خارجي)، fetch-fonts.mjs، preview-server.mjs
 │   ├── postcss.config.mjs     # ⚠️ حيوي: بدونه Tailwind v4 يخرج ثيماً بلا كلاسات (سببت أول انهيار للتصميم)
 │   └── next.config.mjs        # output:'export', trailingSlash, images.unoptimized
-├── scraper/src/               # أدوات السحب (Node 26 + cheerio)
+├── scraper/src/               # أدوات السحب (Node 22 + cheerio)
 │   ├── http.mjs               # fetch مع jar كوكيز يدوي، متابعة redirects (wp-login = بوابة)، retry×3
 │   ├── login.mjs              # دخول wp-login.php (log/pwd/testcookie/rememberme) → .session.json
 │   ├── crawl.mjs              # /page/1..101 حتى 404 + /anime-lists/ → data/post_urls.json (992)
 │   ├── scrape.mjs             # حلقة سحب: 400ms، استئناف بوجود ملف JSON، re-login تلقائي عند البوابة
 │   ├── parse.mjs              # ⭐ المستخلص (التفاصيل بالقسم 5)
-│   ├── build-model.mjs        # تجميع السلاسل + asciiSlug + تفريد + تقسيم الدفعات + تنظيف الملخصات + العائلات
+│   ├── build-model.mjs        # تجميع السلاسل + asciiSlug + تفريد + تنظيف الملخصات + العائلات
 │   ├── download-images.mjs    # تنزيل الأصول (تخطي الموجود، خريطة image_map.json للأسماء الطويلة >200 محرف)
 │   └── fetch-pages.mjs / fetch-home-extras.mjs / fetch-banners.mjs
 ├── data/
-│   ├── series.json            # ⭐ النموذج النهائي: 426 سلسلة / 992+ إصداراً (بعد تقسيم الدفعات)
+│   ├── series.json            # ⭐ النموذج النهائي: 426 سلسلة / 992+ إصداراً
 │   ├── post_urls.json         # 992 رابط منشور
 │   ├── posts/*.json           # 992 منشوراً مُحللاً (gitignored)
 │   ├── pages/about.json|support.json|_footer.json|_home_extras.json
 │   ├── releases/_example.json # نموذج إضافة حلقة جديدة يدوياً (تُدمج تلقائياً في lib/data.ts)
 │   └── images/                # الأصول الأصلية 895MB (gitignored — نسخة احتياطية محلية فقط)
-├── .gitignore                 # يستبعد: data/images, data/posts, .env, .session.json, out/, node_modules
+├── .gitignore                 # يستبعد: data/images, data/posts, .env, .session.json, scraper/.session.enc, out/, node_modules
 └── README.md
 ```
 
 ## 4. بيانات الدخول والوصول
 
-- حساب الموقع الأصلي: `scraper/.env` (RHYTHM_USER=amrm31638@gmail.com) — gitignored. الجلسة في `scraper/.session.json` (كوكيز wordpress_logged_in_...). إن انتهت: `node src/login.mjs`.
-- Cloudflare: متصل عبر أدوات MCP لهذه البيئة (cloudflare.request) — النسخ الأخرى بلا هذا الوصول؛ البديل: `npx wrangler` (مثبت في site/) بعد `npx wrangler login` تفاعلي.
-- GitHub: الدفع عبر GCM نافذة متصفح — **مشكلة متكررة: 403 لأن المتصفح يحتفظ بحساب GitHub آخر (mohamedhossam-byte)**. الحل المجرّب: `"protocol=https`nhost=github.com`n" | git credential reject` ثم push فوراً وأكمل نافذة الدخول بحساب bocchi2277. قد تعلق المهلة 15 دقيقة إن لم تُكمل النافذة.
+- حساب الموقع الأصلي: `scraper/.env` (المتغيران `RHYTHM_USER` و`RHYTHM_PASS` — الملف gitignored والقيم الحقيقية فيه، لا تُنسخ إلى المستودع ولا إلى الوثائق). الجلسة في `scraper/.session.json` (كوكيز wordpress_logged_in_...). إن انتهت: `node src/login.mjs`.
+- Cloudflare: متصل عبر أدوات MCP لهذه البيئة (cloudflare.request) — النسخ الأخرى بلا هذا الوصول؛ البديل: `npx --yes wrangler@4` (لم يعد مثبتاً ضمن اعتماديات الموقع — أزيل لأنه غير مستخدم في الكود ويزيد حجم تثبيت CI بنحو 57 حزمة) بعد `npx wrangler login` تفاعلي.
+- GitHub: الدفع عبر GCM نافذة متصفح — **مشكلة متكررة: 403 لأن المتصفح يحتفظ بحساب GitHub آخر**. الحل المجرّب: `"protocol=https`nhost=github.com`n" | git credential reject` ثم push فوراً وأكمل نافذة الدخول بحساب صاحب الريبو (المعرّف في سجل git العام). قد تعلق المهلة 15 دقيقة إن لم تُكمل النافذة.
 
 ## 5. تفاصيل السحب من الموقع الأصلي (مكتمل — للمرجع)
 
@@ -90,13 +108,12 @@ D:\rhythm\
 ## 6. قواعد النموذج الحاسمة (لا تكسرها)
 
 1. **asciiSlug**: كل slugs مُعقّمة (decode + NFKD + إزالة غير a-z0-9) — السبب: slugs فيها ☆/³ مُرمّزة (`%e2%98%86`) لا تطابق الملفات بعد فك ترميز الحافة → 404. التفريد عند التطابق: `-YEAR` ثم `-2,-3...` (مثال: princess-principal-crown-handler-movie-2021).
-2. **تقسيم الدفعات** (lib/data.ts): إصدار رقمه نطاق `1~12` مع ≥3 صفوف جودة، أو رقم مفرد مع **≥6 صفوف** → يُفكك لحلقات مستقلة متتالية (مثال Clevatess S1: 12 بطاقة). عتبة 6 تمنع تفكيك الأفلام متعددة الجودات.
-3. **displayNumber** يُستخرج من **اسم** الإصدار أولاً (يدعم "01~12") ثم رقم الـslug — علاج عدم تطابق "رقم 2 بجانب اسم 01".
-4. **تنظيف الملخصات** (build-model cleanSynopsis + data.ts safeSynopsis): حذف بادئة "قصة الأنمي:"، رفض ما يبدأ بـ"التصنيف:/الحالة:..." (كانت ul.spe تتسرب كملخص)، إخفاء الصندوق إن فارغ.
-5. **دور "Anime Info" يُحذف** دائماً من staff (هو رابط MAL، محفوظ في malUrl).
-6. **currentProjects**: القائمة المنسوحة يدوياً من صفحتهم الرئيسية (5 أعمال عبر `_home_extras.json` → مطابقة asciiSlug) — وليس heuristic الحالة. الجدول الأسبوعي يقرأ منها.
-7. **franchises**: تجميع بأول مقطع من الـslug (≥4 أحرف، >1 عضو). الاسم = عنوان أقصر عضو قبل أول نقطتين.
-8. **img-manifest**: كل صورة = `/img/<sha1-16>.webp` — أي رابط غير موجود في الخريطة يعود placeholder.svg. سكربتا التنزيل/التحسين يقرآن covers + e.cover + contentImages + صور pages (لا تنسَ أي مصدر جديد).
+2. **displayNumber** يُستخرج من **اسم** الإصدار أولاً (يدعم "01~12") ثم رقم الـslug — علاج عدم تطابق "رقم 2 بجانب اسم 01".
+3. **تنظيف الملخصات** (build-model cleanSynopsis + data.ts safeSynopsis): حذف بادئة "قصة الأنمي:"، رفض ما يبدأ بـ"التصنيف:/الحالة:..." (كانت ul.spe تتسرب كملخص)، إخفاء الصندوق إن فارغ.
+4. **دور "Anime Info" يُحذف** دائماً من staff (هو رابط MAL، محفوظ في malUrl).
+5. **currentProjects**: القائمة المنسوحة يدوياً من صفحتهم الرئيسية (`_home_extras.json` → مطابقة asciiSlug) تُستخدم لمشاريع الرئيسية؛ جدول `/schedule` مستقل ويشتق الأعمال النشطة من الحالة وتاريخ آخر إصدار (آخر 21 يوماً).
+6. **franchises**: تجميع بأول مقطع من الـslug (≥4 أحرف، >1 عضو). الاسم = عنوان أقصر عضو قبل أول نقطتين.
+7. **img-manifest**: كل صورة = `/img/<sha1-16>.webp` — أي رابط غير موجود في الخريطة يعود placeholder.svg. سكربتا التنزيل/التحسين يقرآن covers + e.cover + contentImages + صور pages (لا تنسَ أي مصدر جديد).
 
 ## 7. أخطاء مكلفة وقعت (لا تكررها)
 
@@ -111,8 +128,11 @@ D:\rhythm\
 ## 8. خط أنابيب البناء والنشر
 
 ```bash
+(cd scraper && npm ci && npm test)   # صياغة + اختبارات وحدة — بوابة CI
 cd site
-npm run build     # next build && node scripts/inline-css.mjs (حقن CSS في 437 صفحة)
+npm run typecheck # فحص الأنواع — بوابة CI
+npm run build     # next build && node scripts/inline-css.mjs (حقن CSS بكل صفحة)
+python3 scripts/check-css-coverage.py  # بوابة CI بعد البناء: كلاسات Tailwind المستخدمة موجودة في CSS المبني
 git add -A && git commit && git push   # → CF Pages يبني وينشر تلقائياً
 ```
 - التحقق المحلي: `node scripts/preview-server.mjs` يخدم out/ على :3111 (شغّله بStart-Process مؤقت).
@@ -122,7 +142,7 @@ git add -A && git commit && git push   # → CF Pages يبني وينشر تلق
 ## 9. العمل المؤجل (بترتيب الأولوية المتفق عليها مع العميل)
 
 1. **نظام تسجيل الدخول**: الموقع يجب أن يكون مسدوداً لغير المسجلين كالأصل (حالياً زر "تسجيل الدخول" يفتح دخول الموقع القديم مؤقتاً). مطلوب: تصميم auth (Cloudflare Access؟ Workers D1؟) — قرار معماري لم يُحسم. العميل قال صراحة: "اترك هذا للآخر حتى نصحح ما موجود".
-2. **Keystatic**: الحزم مثبتة (site/package.json) لكن غير مفعلة — يتطلب تحويل الموقع من output:export إلى SSR (@cloudflare/next-on-pages أو Workers) لأن Keystatic يحتاج API routes، أو إبقاء JSON-في-الريبو (النظام الحالي: `data/releases/*.json` حسب `_example.json` يُدمج تلقائياً في lib/data.ts).
+2. **Keystatic**: غير مثبتة وغير مفعلة — تتطلب تحويل الموقع من output:export إلى SSR (@cloudflare/next-on-pages أو Workers) لأن Keystatic يحتاج API routes، أو إبقاء JSON-في-الريبو (النظام الحالي: `data/releases/*.json` حسب `_example.json` يُدمج تلقائياً في lib/data.ts).
 3. **دومين رسمي**: Custom domain في إعدادات مشروع Pages (حساب CF بلا أي zone حالياً).
 4. **R2 اختياري**: bucket `rhythm-images` لم يُنشأ — الصور تُخدم كأصول ثابتة من Pages (مقبول). لو انتقلت لR2: أنشئ الـbucket عبر API وارفع عبر wrangler (يحتاج توكن/تسجيل دخول).
 5. **تحسينات مقترحة غير منفذة**: صفحة "الأخيرة" مستقلة، تعليقات، وضع نهاري (CSS جاهز منطقياً لكن الداكن هو الأساس).
