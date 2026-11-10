@@ -26,7 +26,7 @@
 > ## ملحق 2026-11-09 — تحصين CI وترتيب النشر
 > - `ci.yml`: عمق جلب 1، كاش npm لقفلَي site وscraper، تثبيت scraper بـ`npm ci`، ثم `npm test` (صياغة + وحدات) وtypecheck وبناء الموقع، وأخيراً `python3 site/scripts/check-css-coverage.py` بوابة حاجزة. الصلاحيات contents:read وبلا أسرار في PRs.
 > - `auto-sync.yml`: المزامنة تلتزم محلياً فقط (`sync.mjs --commit-only`)؛ إن تغيّر HEAD تُحدَّث لقطة posts على `sync-data` في worktree معزول وتُدفع بـ`--force-with-lease` ويُتحقق أن المرجع البعيد يطابق الـcommit المدفوع، **ثم** يُدفع main — فشل اللقطة لا يترك النموذج المنشور بلا نسخة خام. لا تغيير في HEAD = تخطي الدفعَتين.
-> - كاش الجلسة صار مشفّراً: `scraper/.session.enc` (openssl AES-256-CBC + PBKDF2) بمفتاح من السر الاختياري `RHYTHM_SESSION_KEY`؛ مفتاح الكاش `rhythm-session-<run_id>` مع restore-keys `rhythm-session-` لالتقاط الكوكيز المحدَّثة. فشل الفك يحذف الملفات التالفة ويستمر بدخول جديد، وغياب السر يتخطى الكاش كلياً. أُزيل كاش `.session.json` النصي وكاش node_modules (استُبدل بكاش setup-node).
+> - كاش الجلسة صار مشفّراً: `scraper/.session.enc` (openssl AES-256-CBC + PBKDF2 بـ600000 تكرار) بمفتاح من السر الاختياري `RHYTHM_SESSION_KEY`؛ مفتاح الكاش `rhythm-session-<run_id>` مع restore-keys `rhythm-session-` لالتقاط الكوكيز المحدَّثة. فشل الفك يحذف الملفات التالفة ويستمر بدخول جديد، وغياب السر يتخطى الكاش كلياً. أُزيل كاش `.session.json` النصي وكاش node_modules (استُبدل بكاش setup-node). ⚠️ الأسرار الآن محجوبة على مستوى الخطوة (step-level env) لا الـjob، حتى لا يراها `npm ci`. ⚠️ AES-256-CBC بلا MAC — التوصية: `age` أو `openssl dgst -sha256 -hmac` قبل التشفير.
 > - فحص اللقطة قبل الفك يرفض الأسماء المطلقة/الهاربة إلى الأب ومدخلات symlink/hardlink، وجلب اللقطة يُعاد 3 محاولات.
 
 ---
@@ -62,12 +62,23 @@ D:\rhythm\
 │   │   ├── about/ + support/  # محتواهما الأصلي المسحوب من data/pages/ (about.json فيه حقل key!)
 │   │   └── layout.tsx         # هيدر (Header.tsx عميل: برجر→X متحرك، قوائم أنمي وعن الفريق منسدلتان، دخول بالقائمة آخرها) + فوتر (تصفح يمين/شعار وسط/فريق يسار على الحاسوب؛ توقيع "بكل فخر Rhythm-sub || Ox Alpha")
 │   ├── components/            # AnimeCard (clamp مضمون inline-style + fallback اسم بلا صورة)، EpisodeCard (عرضي 16:9 للرئيسية)، EpisodeRow (صف الحلقة بنمط ريفايف)، LatestEpisodes (ترقيم ذكي عميل)، HeroSlider (عشوائي 12، 6 ثوانٍ، أسهم)
-│   ├── lib/data.ts            # ⭐ قلب البيانات: يقرأ ../data/series.json + img-manifest + pages، franchises، currentProjects
+│   ├── lib/                   # طبقة البيانات مقسّمة حسب المسؤولية:
+│   │   ├── data.ts            # ⭐ جذر التركيب: تحميل ../data/series.json → تحقق → إصلاح → تطبيع → دمج → اشتقاق (franchises، currentProjects، latestReleases)
+│   │   ├── images.ts          # img-manifest.json + تحويل روابط الصور المسحوبة إلى أصول محلية (يرفض المضيفين الخارجيين)
+│   │   ├── text.ts            # تنظيف العناوين والملخّصات (pure) — نسخة مطابقة لما في scraper/src/build-model.mjs
+│   │   ├── slug.ts            # قواعد slug ومفتاح السلسلة (pure) — نسخة مطابقة لما في scraper/src/build-model.mjs
+│   │   ├── types.ts           # أنواع النطاق (pure)
+│   │   ├── sanitize.ts        # قائمة سماح HTML (allowlist) — الخطر الأخير قبل dangerouslySetInnerHTML
+│   │   ├── url.ts             # قائمة سماح المخططات (http/https/magnet/mailto)
+│   │   ├── css-url.ts         # تهريب قيم CSS (client-safe)
+│   │   ├── pages.ts           # تحميل الصفحات الثابتة من data/pages + تعقيمها
+│   │   ├── series-split.ts    # فصل المنشورات الخاصة بسلسلة أخرى (إصلاح بيانات المصدر)
+│   │   └── team-releases.ts   # دمج data/releases/*.json (يبقى ضمن lib/data.ts عبر applyTeamReleases)
 │   ├── public/img/            # 2083 صورة WebP محسّنة (~115MB)
 │   ├── public/img-manifest.json  # خريطة { رابط أصلي → /img/hash.webp }
 │   ├── public/fonts/          # IBM Plex Sans Arabic woff2 (arabic+latin 400/500/700) مستضافة ذاتياً
 │   ├── public/banners/        # لافتتا PayPal والدعم الأصليتان من /img/01.jpg و /img/02.jpg
-│   ├── scripts/               # optimize-images.mjs، download-images.mjs، inline-css.mjs (يُحقن CSS بكل صفحة — لا تعتمد على طلب خارجي)، fetch-fonts.mjs، preview-server.mjs
+│   ├── scripts/               # optimize-images.mjs، download-images.mjs، inline-css.mjs (يُحقن CSS بكل صفحة — لا تعتمد على طلب خارجي؛ SKIP_CSS_INLINE=1 يبقي <link> والذاكرة المؤقتة)، check-css-coverage.py، check-no-external-assets.mjs، fetch-fonts.mjs، preview-server.mjs
 │   ├── postcss.config.mjs     # ⚠️ حيوي: بدونه Tailwind v4 يخرج ثيماً بلا كلاسات (سببت أول انهيار للتصميم)
 │   └── next.config.mjs        # output:'export', trailingSlash, images.unoptimized
 ├── scraper/src/               # أدوات السحب (Node 22 + cheerio)

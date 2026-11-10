@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { cssUrl } from '@/lib/css-url';
 
 export type HeroSlide = {
@@ -23,7 +23,10 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const [userPaused, setUserPaused] = useState(false);
   const [hoverPaused, setHoverPaused] = useState(false);
   const autoplay = !userPaused && !hoverPaused;
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Bumped after a manual interaction so the autoplay countdown restarts.
+  // The interval itself is owned ONLY by the effect below — a second owner
+  // would leak a timer on unmount and can fire two intervals at once.
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setUserPaused(true);
@@ -46,16 +49,14 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
 
   useEffect(() => {
     if (slides.length <= 1 || !autoplay) return;
-    timer.current = setInterval(next, 6000);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
-  }, [next, slides.length, autoplay]);
+    const id = setInterval(next, 6000);
+    return () => clearInterval(id);
+  }, [next, slides.length, autoplay, tick]);
 
   function manual(fn: () => void) {
-    if (timer.current) clearInterval(timer.current);
     fn();
-    if (slides.length > 1 && autoplay) timer.current = setInterval(next, 6000);
+    // Restart the autoplay countdown after a manual interaction.
+    setTick((t) => t + 1);
   }
 
   if (!slides.length) return null;

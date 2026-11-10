@@ -1,4 +1,4 @@
-import { sitePage, mappedHtml } from '@/lib/data';
+import { sitePage } from '@/lib/data';
 
 export const metadata = { title: 'من نحن' };
 
@@ -16,7 +16,10 @@ export default function AboutPage() {
       {page && (
         <div
           className="prose-rtl bg-card border border-edge rounded-2xl p-6 md:p-10 mt-6 leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: mappedHtml(page.contentHtml) }}
+          /* contentHtml is sanitized + localized at load time (lib/pages.ts) —
+             it is safe to render as-is; re-running mappedHtml() here would
+             sanitize and re-map the same markup a second time. */
+          dangerouslySetInnerHTML={{ __html: page.contentHtml }}
         />
       )}
     </div>

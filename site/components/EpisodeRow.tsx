@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import type { Episode } from '@/lib/data';
+import type { Episode } from '@/lib/types';
 import { formatDateAr } from '@/lib/format';
+import { cleanTags } from '@/lib/text';
 import { safeUrl } from '@/lib/url';
 
 const TYPE_BADGE: Record<string, string> = {
@@ -13,7 +14,9 @@ const TYPE_BADGE: Record<string, string> = {
 
 /** Extract a short quality tag from the raw quality string */
 function qualityTag(raw: string): { isBD: boolean; res: string } {
-  const clean = raw.replace(/\[[0-9A-Fa-f]{6,12}\]/g, '').trim();
+  // Reuse the shared tag cleaner (lib/text.ts) instead of duplicating the
+  // hash-stripping regex here — the two had already drifted apart.
+  const clean = cleanTags(raw);
   const isBD = /\bbd\b|blu-ray|bluray/i.test(clean);
   const resMatch = clean.match(/(\d{3,4}p)/i);
   const res = resMatch ? resMatch[1] : '';
@@ -46,8 +49,10 @@ export default function EpisodeRow({
   const displayTitle = ep.label?.trim() || (ep.displayNum ? `الحلقة ${ep.displayNum}` : 'إصدار');
 
   /* Flatten all download links from all qualities into a single list,
-     each tagged with its source info */
-  const allLinks: { name: string; url: string; isBD: boolean; res: string }[] = [];
+     each tagged with its source info. Duplicates (same name + URL across
+     quality rows) are collapsed so the row does not repeat a button. */
+  const allLinks: { key: string; name: string; url: string; isBD: boolean; res: string }[] = [];
+  const seenLinks = new Set<string>();
   for (const q of ep.qualities) {
     if (!q.links || q.links.length === 0) continue;
     const { isBD, res } = qualityTag(q.quality);
@@ -55,7 +60,11 @@ export default function EpisodeRow({
       // Defense in depth: drop non-http(s)/magnet links even if the data
       // layer let them through (React does not block javascript: hrefs).
       const url = safeUrl(l.url);
-      if (url) allLinks.push({ name: l.name, url, isBD, res });
+      if (!url) continue;
+      const key = `${l.name}\u0000${url}`;
+      if (seenLinks.has(key)) continue;
+      seenLinks.add(key);
+      allLinks.push({ key, name: l.name, url, isBD, res });
     }
   }
 
@@ -85,12 +94,12 @@ export default function EpisodeRow({
       {/* Download links: simple wrapped row */}
       {allLinks.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {allLinks.map((l, i) => {
+          {allLinks.map((l) => {
             const isTorrent = /torrent|nyaa/i.test(l.name);
             const tag = l.isBD ? (l.res ? `BD ${l.res}` : 'BD') : l.res || '';
             return (
               <a
-                key={i}
+                key={l.key}
                 href={l.url}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
