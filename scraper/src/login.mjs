@@ -4,7 +4,21 @@ import { loadEnv } from './util.mjs';
 export async function ensureSession({ force = false } = {}) {
   loadEnv();
   jar.load();
-  if (!force && jar.has('wordpress_logged_in')) return true;
+
+  const injected = Boolean(process.env.RHYTHM_COOKIE);
+  // An injected cookie is authoritative — there is no login to validate.
+  // Otherwise a cached session is reused unless a forced re-login was asked.
+  if (jar.has('wordpress_logged_in') && (injected || !force)) return true;
+
+  // A forced login must not be able to "succeed" on a stale auth cookie left in
+  // the jar by a previous session: drop it first, so the check below reflects
+  // this login's real result. (An injected RHYTHM_COOKIE is re-applied by
+  // jar.load() and must survive — that path has no login to validate.)
+  if (force && !injected) {
+    for (const k of [...jar.map.keys()]) {
+      if (k.startsWith('wordpress_logged_in') || k.startsWith('wordpress_sec')) jar.map.delete(k);
+    }
+  }
 
   const user = process.env.RHYTHM_USER;
   const pass = process.env.RHYTHM_PASS;
@@ -39,7 +53,10 @@ export async function ensureSession({ force = false } = {}) {
 
   jar.save();
   if (!jar.has('wordpress_logged_in')) {
-    throw new Error(`login failed (HTTP ${res.status}) - check credentials`);
+    throw new Error(
+      `login failed: the site did not issue a session cookie (HTTP ${res.status}). ` +
+        'Check RHYTHM_USER / RHYTHM_PASS.'
+    );
   }
   return true;
 }
