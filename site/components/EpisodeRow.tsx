@@ -1,14 +1,7 @@
 import Link from 'next/link';
 import type { Episode } from '@/lib/data';
-
-function fmtDate(iso: string | null) {
-  if (!iso) return '';
-  try {
-    return new Intl.DateTimeFormat('ar', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
-  } catch {
-    return iso.slice(0, 10);
-  }
-}
+import { formatDateAr } from '@/lib/format';
+import { safeUrl } from '@/lib/url';
 
 const TYPE_BADGE: Record<string, string> = {
   movie: 'فيلم',
@@ -27,7 +20,18 @@ function qualityTag(raw: string): { isBD: boolean; res: string } {
   return { isBD, res };
 }
 
-export default function EpisodeRow({ ep, typeText }: { ep: Episode; typeText?: string | null }) {
+export default function EpisodeRow({
+  ep,
+  typeText,
+  seriesSlug,
+}: {
+  ep: Episode;
+  typeText?: string | null;
+  // Required: /anime/<slug>/ only exists for SERIES slugs (episode-level post slugs
+  // are never in generateStaticParams), so the old `?? ep.slug` fallback minted
+  // guaranteed 404 links.
+  seriesSlug: string;
+}) {
   const kindLabel =
     /movie|فيلم/i.test(ep.label)
       ? 'فيلم'
@@ -48,7 +52,10 @@ export default function EpisodeRow({ ep, typeText }: { ep: Episode; typeText?: s
     if (!q.links || q.links.length === 0) continue;
     const { isBD, res } = qualityTag(q.quality);
     for (const l of q.links) {
-      allLinks.push({ name: l.name, url: l.url, isBD, res });
+      // Defense in depth: drop non-http(s)/magnet links even if the data
+      // layer let them through (React does not block javascript: hrefs).
+      const url = safeUrl(l.url);
+      if (url) allLinks.push({ name: l.name, url, isBD, res });
     }
   }
 
@@ -64,14 +71,14 @@ export default function EpisodeRow({ ep, typeText }: { ep: Episode; typeText?: s
         </span>
         <div className="min-w-0 flex-1">
           <Link
-            href={`/anime/${ep.slug.replace(/-p\d+$/, '')}/`}
+            href={`/anime/${seriesSlug}/`}
             className="block text-sm font-bold truncate hover:text-accent transition-colors"
             dir="ltr"
             title={displayTitle}
           >
             {displayTitle}
           </Link>
-          <p className="text-xs text-muted mt-0.5">{fmtDate(ep.date)}</p>
+          <p className="text-xs text-muted mt-0.5">{formatDateAr(ep.date)}</p>
         </div>
       </div>
 

@@ -1,15 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DATA, POSTS_DIR } from './util.mjs';
+import { pathToFileURL } from 'node:url';
+import { DATA, POSTS_DIR, writeFileAtomic, writeJsonAtomic } from './util.mjs';
 
-function normalizeSlug(slug) {
+export function normalizeSlug(slug) {
   return slug
     .replace(/-(?:episode|ep)-?\d{1,4}$/i, '')
     .replace(/-\d{1,4}$/, '')
     .replace(/-\d{1,4}(?:-\d{1,2})?$/, '');
 }
 
-function asciiSlug(raw) {
+export function asciiSlug(raw) {
   let s = raw;
   try {
     s = decodeURIComponent(raw);
@@ -24,7 +25,7 @@ function asciiSlug(raw) {
   return s || 'anime';
 }
 
-function episodeNumberFrom(post) {
+export function episodeNumberFrom(post) {
   const m1 = post.slug.match(/(?:^|-)(?:episode|ep)-?(\d{1,4})$/i);
   if (m1) return parseInt(m1[1], 10);
   const m2 = post.slug.match(/-(\d{1,4})$/);
@@ -35,6 +36,69 @@ function episodeNumberFrom(post) {
   const t = post.title.match(/[-#\s](\d{1,4})(?:\s*(?:END|الأخيرة|\(نهائي\)))?$/i);
   if (t && post.type?.text !== 'Movie') return parseInt(t[1], 10);
   return null;
+}
+
+// Declared once at module scope (previously re-created inside the per-series
+// loop). Pure function of `post`.
+export function extractEpisodeMetadata(post) {
+  const title = post.title || '';
+
+  // Check if range like '01 ~ 05' or '[01~12]'
+  const tildeMatch = title.match(/(\d{1,3})\s*[\~～]\s*(\d{1,3})(?:\s*END)?/i) || title.match(/\[(\d{1,3})\s*[\~～–-]\s*(\d{1,3})\]/);
+  if (tildeMatch) {
+    const isEnd = /END/i.test(title);
+    return {
+      displayNum: isEnd ? `${tildeMatch[1]}~${tildeMatch[2]} END` : `${tildeMatch[1]}~${tildeMatch[2]}`,
+      number: parseInt(tildeMatch[2], 10),
+      label: title
+    };
+  }
+
+  // Check if volume like 'Vol.01' or 'Vol.1'
+  const volMatch = title.match(/Vol\.?\s*(\d{1,2})(?:\s*END)?/i);
+  if (volMatch) {
+    const isEnd = /END/i.test(title);
+    return {
+      displayNum: isEnd ? `Vol.${volMatch[1]} END` : `Vol.${volMatch[1]}`,
+      number: parseInt(volMatch[1], 10) * 100,
+      label: title
+    };
+  }
+
+  // Check if full BD batch like 'Absolute Duo - BD' or 'BD'
+  if (/\bBD\b|Blu-ray/i.test(post.type?.text) || (/\bBD\b|Blu-ray/i.test(title) && !title.match(/[-–]\s*\d{1,3}\s*$/))) {
+    return {
+      displayNum: 'BD',
+      number: 9999,
+      label: title
+    };
+  }
+
+  // Check Movie / OVA / ONA / Special
+  if (/movie|فيلم/i.test(title) || post.type?.text === 'Movie') {
+    return { displayNum: 'فيلم', number: 1, label: title };
+  }
+  if (/OVA/i.test(title) || post.type?.text === 'OVA') {
+    const ovaNum = title.match(/OVA\s*(\d+)/i);
+    return { displayNum: ovaNum ? `OVA ${ovaNum[1]}` : 'OVA', number: ovaNum ? parseInt(ovaNum[1], 10) : 1, label: title };
+  }
+  if (/ONA/i.test(title) || post.type?.text === 'ONA') {
+    const onaNum = title.match(/[-–]\s*(\d+)/);
+    return { displayNum: onaNum ? `ONA ${onaNum[1]}` : 'ONA', number: onaNum ? parseInt(onaNum[1], 10) : 1, label: title };
+  }
+
+  // Single episode
+  const epNum = episodeNumberFrom(post);
+  if (epNum != null) {
+    const isEnd = /END|الأخيرة/i.test(title);
+    return {
+      displayNum: isEnd ? `${epNum} END` : String(epNum),
+      number: epNum,
+      label: title
+    };
+  }
+
+  return { displayNum: null, number: null, label: title };
 }
 
 function pickLatest(posts, getter) {
@@ -85,19 +149,19 @@ function getFranchiseKey(slug) {
   return null;
 }
 
-function main() {
-  const files = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.json'));
-  const posts = files.map((f) => JSON.parse(fs.readFileSync(path.join(POSTS_DIR, f), 'utf8')));
-  console.log(`loaded ${posts.length} posts`);
-
-  posts.sort((a, b) => String(a.publishedAt ?? '').localeCompare(String(b.publishedAt ?? '')));
-
+// Group posts into series. Pure and exported for regression tests.
+// Pass 1: key each post by MAL id when present, else by normalized slug; a MAL
+// post absorbs any slug group that already exists.
+// Pass 2 (deterministic fix): a MAL post may arrive BEFORE its non-MAL
+// siblings, so pass 1 alone would leave a duplicate slug-only series behind.
+// After all posts are keyed, merge every slug group matching a MAL group's
+// member slugs into that MAL group. Iteration order is the Map insertion
+// order (posts are date-sorted), so the result is deterministic.
+export function groupPosts(posts) {
   const groups = new Map();
   for (const p of posts) {
-    let key;
     const malIdMatch = p.malUrl ? p.malUrl.match(/\/anime\/(\d+)/) : null;
-    if (malIdMatch) key = `mal:${malIdMatch[1]}`;
-    else key = `slug:${normalizeSlug(p.slug)}`;
+    const key = malIdMatch ? `mal:${malIdMatch[1]}` : `slug:${normalizeSlug(p.slug)}`;
 
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(p);
@@ -110,6 +174,42 @@ function main() {
       }
     }
   }
+
+  for (const [key, members] of groups) {
+    if (!key.startsWith('mal:')) continue;
+    for (const p of [...members]) {
+      const slugKey = `slug:${normalizeSlug(p.slug)}`;
+      const slugGroup = groups.get(slugKey);
+      if (slugGroup) {
+        members.push(...slugGroup);
+        groups.delete(slugKey);
+      }
+    }
+  }
+  return groups;
+}
+
+function main() {
+  const files = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.json'));
+  const posts = [];
+  const bad = [];
+  for (const f of files) {
+    try {
+      posts.push(JSON.parse(fs.readFileSync(path.join(POSTS_DIR, f), 'utf8')));
+    } catch (e) {
+      bad.push(`${f}: ${e.message}`);
+    }
+  }
+  if (bad.length) {
+    // Fail loudly with the offending file names instead of a bare SyntaxError
+    // deep in the build (or silently dropping series from the model).
+    throw new Error(`Unparseable post files:\n  ${bad.join('\n  ')}`);
+  }
+  console.log(`loaded ${posts.length} posts`);
+
+  posts.sort((a, b) => String(a.publishedAt ?? '').localeCompare(String(b.publishedAt ?? '')));
+
+  const groups = groupPosts(posts);
 
   const seriesList = [];
   const slugIndex = new Map();
@@ -139,67 +239,6 @@ function main() {
     }
     usedSlugs.add(slug);
 
-function extractEpisodeMetadata(post) {
-  const title = post.title || '';
-  
-  // Check if range like '01 ~ 05' or '[01~12]'
-  const tildeMatch = title.match(/(\d{1,3})\s*[\~～]\s*(\d{1,3})(?:\s*END)?/i) || title.match(/\[(\d{1,3})\s*[\~～–-]\s*(\d{1,3})\]/);
-  if (tildeMatch) {
-    const isEnd = /END/i.test(title);
-    return {
-      displayNum: isEnd ? `${tildeMatch[1]}~${tildeMatch[2]} END` : `${tildeMatch[1]}~${tildeMatch[2]}`,
-      number: parseInt(tildeMatch[2], 10),
-      label: title
-    };
-  }
-  
-  // Check if volume like 'Vol.01' or 'Vol.1'
-  const volMatch = title.match(/Vol\.?\s*(\d{1,2})(?:\s*END)?/i);
-  if (volMatch) {
-    const isEnd = /END/i.test(title);
-    return {
-      displayNum: isEnd ? `Vol.${volMatch[1]} END` : `Vol.${volMatch[1]}`,
-      number: parseInt(volMatch[1], 10) * 100,
-      label: title
-    };
-  }
-
-  // Check if full BD batch like 'Absolute Duo - BD' or 'BD'
-  if (/\bBD\b|Blu-ray/i.test(post.type?.text) || (/\bBD\b|Blu-ray/i.test(title) && !title.match(/[-–]\s*\d{1,3}\s*$/))) {
-    return {
-      displayNum: 'BD',
-      number: 9999,
-      label: title
-    };
-  }
-
-  // Check Movie / OVA / ONA / Special
-  if (/movie|فيلم/i.test(title) || post.type?.text === 'Movie') {
-    return { displayNum: 'فيلم', number: 1, label: title };
-  }
-  if (/OVA/i.test(title) || post.type?.text === 'OVA') {
-    const ovaNum = title.match(/OVA\s*(\d+)/i);
-    return { displayNum: ovaNum ? `OVA ${ovaNum[1]}` : 'OVA', number: ovaNum ? parseInt(ovaNum[1], 10) : 1, label: title };
-  }
-  if (/ONA/i.test(title) || post.type?.text === 'ONA') {
-    const onaNum = title.match(/[-–]\s*(\d+)/);
-    return { displayNum: onaNum ? `ONA ${onaNum[1]}` : 'ONA', number: onaNum ? parseInt(onaNum[1], 10) : 1, label: title };
-  }
-
-  // Single episode
-  const epNum = episodeNumberFrom(post);
-  if (epNum != null) {
-    const isEnd = /END|الأخيرة/i.test(title);
-    return {
-      displayNum: isEnd ? `${epNum} END` : String(epNum),
-      number: epNum,
-      label: title
-    };
-  }
-
-  return { displayNum: null, number: null, label: title };
-}
-
     const episodes = uniq.map((p) => {
       const meta = extractEpisodeMetadata(p);
       return {
@@ -218,8 +257,7 @@ function extractEpisodeMetadata(post) {
         ),
         contentImages: p.contentImages,
         postId: p.postId,
-        author: p.author,
-        contentHtml: p.contentHtml
+        author: p.author
       };
     });
 
@@ -341,7 +379,7 @@ function areDistinctlyRelated(titleA, titleB) {
 
   seriesList.sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
 
-  fs.writeFileSync(path.join(DATA, 'series.json'), JSON.stringify(seriesList));
+  writeJsonAtomic(path.join(DATA, 'series.json'), seriesList, 0);
 
   const totalEpisodes = seriesList.reduce((n, s) => n + s.episodes.length, 0);
   const withCover = seriesList.filter((s) => s.cover).length;
@@ -380,7 +418,7 @@ Generated: ${new Date().toISOString()}
 
 ## Sample verification (5 random series)
 ${seriesList
-  .filter((_, i) => i % Math.floor(seriesList.length / 5) === 0)
+  .filter((_, i) => i % Math.max(1, Math.floor(seriesList.length / 5)) === 0)
   .slice(0, 5)
   .map(
     (s) =>
@@ -389,9 +427,12 @@ ${seriesList
   .join('\n')}
 `;
 
-  fs.writeFileSync(path.join(DATA, 'report.md'), report);
+  writeFileAtomic(path.join(DATA, 'report.md'), report);
   console.log(`series: ${seriesList.length} | episodes: ${totalEpisodes} | images: ${allImageUrls.size}`);
   console.log(report);
 }
 
-main();
+// CLI direct run — importing this module must not rebuild the model as a side effect.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

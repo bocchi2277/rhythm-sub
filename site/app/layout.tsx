@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import Header, { Logo } from '@/components/Header';
+import Header from '@/components/Header';
 import { socials } from '@/lib/data';
+import { safeUrl } from '@/lib/url';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -17,10 +18,12 @@ const SOCIAL_ICONS: Record<string, string> = {
   'youtube.com': 'M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.3 31.3 0 0 0 0 12a31.3 31.3 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.3 31.3 0 0 0 24 12a31.3 31.3 0 0 0-.5-5.8zM9.5 15.5v-7l6.3 3.5-6.3 3.5z',
   'facebook.com': 'M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z'
 };
+const GENERIC_LINK_ICON =
+  'M10.59 13.41a1 1 0 0 0 1.41 1.41l4.24-4.24a3 3 0 1 0-4.24-4.24L9.88 8.46a1 1 0 1 0 1.41 1.41l2.12-2.12a1 1 0 1 1 1.41 1.41l-4.24 4.24z M13.41 10.59a1 1 0 1 0-1.41-1.41L7.76 13.41a3 3 0 1 0 4.24 4.24l2.12-2.12a1 1 0 1 0-1.41-1.41L10.59 16.24a1 1 0 1 1-1.41-1.41l4.24-4.24z';
 
 function socialIcon(href: string) {
   const key = Object.keys(SOCIAL_ICONS).find((k) => href.includes(k));
-  return key ? SOCIAL_ICONS[key] : SOCIAL_ICONS['twitter.com'];
+  return key ? SOCIAL_ICONS[key] : GENERIC_LINK_ICON;
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -49,23 +52,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
             <div className="order-1 md:order-2 col-span-2 md:col-span-1 flex flex-col items-center text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt="Rhythm-Sub" className="h-24 w-auto" />
+              <img src="/logo.png" alt="Rhythm-Sub" width={814} height={545} className="h-24 w-auto" />
               {socials.length > 0 && (
                 <div className="flex items-center gap-2 mt-4">
-                  {socials.map((s) => (
-                    <a
-                      key={s.href}
-                      href={s.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={s.label || s.href}
-                      className="w-9 h-9 grid place-items-center rounded-xl bg-card border border-edge hover:border-accent hover:text-accent transition-colors"
-                    >
-                      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                        <path d={socialIcon(s.href)} />
-                      </svg>
-                    </a>
-                  ))}
+                  {socials.map((s) => {
+                    const href = safeUrl(s.href);
+                    return href ? (
+                      <a
+                        key={s.href}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={s.label || href}
+                        className="w-9 h-9 grid place-items-center rounded-xl bg-card border border-edge hover:border-accent hover:text-accent transition-colors"
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+                          <path d={socialIcon(href)} />
+                        </svg>
+                      </a>
+                    ) : null;
+                  })}
                 </div>
               )}
             </div>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 type Item = {
   slug: string;
@@ -37,7 +37,11 @@ export default function SearchClient({ index }: { index: Item[] }) {
   const [type, setType] = useState(() => searchParams.get('type') ?? '');
   const [status, setStatus] = useState(() => searchParams.get('status') ?? '');
   const [genre, setGenre] = useState(() => searchParams.get('genre') ?? '');
-  const [sort, setSort] = useState<SortKey>(() => (searchParams.get('sort') as SortKey) || 'recent');
+  const [sort, setSort] = useState<SortKey>(() => {
+    const raw = searchParams.get('sort');
+    return SORTS.some((s) => s.key === raw) ? (raw as SortKey) : 'recent';
+  });
+  const [limit, setLimit] = useState(24);
 
   // Sync state to URL params
   const updateUrl = useCallback((newParams: { q?: string; type?: string; status?: string; genre?: string; sort?: string }) => {
@@ -58,45 +62,36 @@ export default function SearchClient({ index }: { index: Item[] }) {
     if (newParams.sort && newParams.sort !== 'recent') url.searchParams.set('sort', newParams.sort);
     else url.searchParams.delete('sort');
 
-    window.history.replaceState(null, '', url.pathname + (url.search ? url.search : ''));
-  }, []);
-
-  // Listen to browser Back / Forward buttons
-  useEffect(() => {
-    const handlePopState = () => {
-      const sp = new URLSearchParams(window.location.search);
-      setQ(sp.get('q') ?? '');
-      setType(sp.get('type') ?? '');
-      setStatus(sp.get('status') ?? '');
-      setGenre(sp.get('genre') ?? '');
-      setSort((sp.get('sort') as SortKey) || 'recent');
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.history.replaceState(window.history.state, '', url.pathname + (url.search ? url.search : ''));
   }, []);
 
   const handleQChange = (val: string) => {
     setQ(val);
+    setLimit(24);
     updateUrl({ q: val, type, status, genre, sort });
   };
 
   const handleTypeChange = (val: string) => {
     setType(val);
+    setLimit(24);
     updateUrl({ q, type: val, status, genre, sort });
   };
 
   const handleStatusChange = (val: string) => {
     setStatus(val);
+    setLimit(24);
     updateUrl({ q, type, status: val, genre, sort });
   };
 
   const handleGenreChange = (val: string) => {
     setGenre(val);
+    setLimit(24);
     updateUrl({ q, type, status, genre: val, sort });
   };
 
   const handleSortChange = (val: SortKey) => {
     setSort(val);
+    setLimit(24);
     updateUrl({ q, type, status, genre, sort: val });
   };
 
@@ -153,28 +148,27 @@ export default function SearchClient({ index }: { index: Item[] }) {
     'bg-card border border-edge rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent transition-colors';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 mt-6">
-      <h1 className="text-2xl font-bold mb-6">البحث المتقدم</h1>
-
+    <>
       <div className="glass border border-edge rounded-2xl p-5 grid gap-4 md:grid-cols-[2fr_1fr_1fr_1fr] mb-3">
         <input
           value={q}
           onChange={(e) => handleQChange(e.target.value)}
           placeholder="ابحث..."
+          aria-label="ابحث في الأعمال"
           className={selectCls + ' w-full'}
         />
-        <select value={type} onChange={(e) => handleTypeChange(e.target.value)} className={selectCls}>
+        <select value={type} onChange={(e) => handleTypeChange(e.target.value)} className={selectCls} aria-label="النوع">
           <option value="">كل الأنواع</option>
           {types.map((t) => (
             <option key={t}>{t}</option>
           ))}
         </select>
-        <select value={status} onChange={(e) => handleStatusChange(e.target.value)} className={selectCls}>
+        <select value={status} onChange={(e) => handleStatusChange(e.target.value)} className={selectCls} aria-label="الحالة">
           <option value="">الحالة</option>
           <option>مستمر</option>
           <option>مكتمل</option>
         </select>
-        <select value={genre} onChange={(e) => handleGenreChange(e.target.value)} className={selectCls}>
+        <select value={genre} onChange={(e) => handleGenreChange(e.target.value)} className={selectCls} aria-label="التصنيف">
           <option value="">كل التصنيفات</option>
           {topGenres.map(([g, n]) => (
             <option key={g} value={g}>
@@ -199,17 +193,17 @@ export default function SearchClient({ index }: { index: Item[] }) {
         ))}
       </div>
 
-      <p className="text-sm text-muted mb-4">النتائج: {results.length}</p>
+      <p className="text-sm text-muted mb-4" aria-live="polite">النتائج: {results.length}</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {results.map((r) => (
+        {results.slice(0, limit).map((r) => (
           <Link
             key={r.slug}
             href={`/anime/${r.slug}/`}
             className="card-hover flex gap-3 bg-card border border-edge rounded-2xl p-3"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={r.cover} alt="" loading="lazy" className="w-[72px] h-[104px] object-cover rounded-xl shrink-0" />
+            <img src={r.cover} alt="" loading="lazy" decoding="async" className="w-[72px] h-[104px] object-cover rounded-xl shrink-0" />
             <div className="min-w-0 flex-1">
               <h3 dir="ltr" className="text-sm font-bold text-end line-clamp-2 leading-snug">
                 {r.title}
@@ -231,6 +225,13 @@ export default function SearchClient({ index }: { index: Item[] }) {
           </Link>
         ))}
       </div>
-    </div>
+      {results.length > limit && (
+        <div className="mt-6 text-center">
+          <button type="button" onClick={() => setLimit((n) => n + 24)} className="btn-accent px-5 py-2.5 rounded-xl text-sm font-bold">
+            عرض المزيد ({results.length - limit})
+          </button>
+        </div>
+      )}
+    </>
   );
 }

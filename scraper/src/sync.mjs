@@ -1,27 +1,57 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 let sharp;
 try {
   sharp = (await import('sharp')).default;
 } catch {
+  // Fallback for checkouts where sharp is only installed under site/ (the site
+  // package declares it). Declared in scraper/package.json as the primary source.
   sharp = (await import('../../site/node_modules/sharp/lib/index.js')).default;
 }
-import { fetchPage, jar, sleepBetween } from './http.mjs';
+import { fetchPage, jar, sleepBetween, usingInjectedCookie } from './http.mjs';
 import { ensureSession } from './login.mjs';
 import { parsePost } from './parse.mjs';
-import { DATA, POSTS_DIR, BASE, loadEnv, slugFromUrl, ensureDirs } from './util.mjs';
+import { DATA, POSTS_DIR, BASE, loadEnv, slugFromUrl, ensureDirs, isAllowedImageHost, readBodyLimited, writeJsonAtomic, writeFileAtomic, fetchAllowedImage } from './util.mjs';
 
 const POST_RE = new RegExp(`https?://rhythm-sub\\.com/20\\d{2}/\\d{2}/\\d{2}/[^"'#<>\\s]+`, 'g');
 const URLS_FILE = path.join(DATA, 'post_urls.json');
 const OUT_DIR = path.resolve(DATA, '../site/public/img');
-const MANIFEST = path.resolve(DATA, '../site/public/img-manifest.json');
+const MANIFEST = path.resolve(DATA, '../site/img-manifest.json');
 const UA_IMG = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36';
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+// Exactly the paths a sync run is allowed to stage/commit. Shared by --push
+// (local) and --commit-only (CI pushes the snapshot first, then main itself).
+const COMMIT_PATHS = [
+  'data/series.json',
+  'data/post_urls.json',
+  'data/image_map.json',
+  'data/pages',
+  'data/releases',
+  'site/public/img',
+  'site/img-manifest.json'
+];
 
 function extractUrls(html) {
   return [...new Set((html.match(POST_RE) ?? []).map((u) => u.replace(/\/+$/, '')))];
+}
+
+// When auth is delegated to an injected cookie, a redirect to wp-login means
+// the cookie is dead — forcing a login would only fail against a blocked
+// wp-login.php, so surface a message the operator can actually act on.
+async function reauthOrThrow() {
+  if (usingInjectedCookie()) {
+    throw new Error(
+      'RHYTHM_COOKIE was rejected by rhythm-sub.com (expired or invalid). ' +
+        'Refresh it: log in with "remember me" checked, copy the Cookie request ' +
+        'header, then update the RHYTHM_COOKIE GitHub secret.'
+    );
+  }
+  await ensureSession({ force: true });
 }
 
 async function fetchRecentUrls() {
@@ -33,7 +63,7 @@ async function fetchRecentUrls() {
     try {
       let { html, redirectedTo } = await fetchPage(target);
       if (redirectedTo && /wp-login/.test(redirectedTo)) {
-        await ensureSession({ force: true });
+        await reauthOrThrow();
         ({ html } = await fetchPage(target));
       }
       if (html) {
@@ -48,7 +78,7 @@ async function fetchRecentUrls() {
   try {
     let { html: feedXml, redirectedTo } = await fetchPage(`${BASE}/feed/`);
     if (redirectedTo && /wp-login/.test(redirectedTo)) {
-      await ensureSession({ force: true });
+      await reauthOrThrow();
       ({ html: feedXml } = await fetchPage(`${BASE}/feed/`));
     }
     if (feedXml) {
@@ -60,6 +90,10 @@ async function fetchRecentUrls() {
 }
 
 async function downloadAndOptimizeImage(url, manifest) {
+  if (!isAllowedImageHost(url)) {
+    console.warn(`  ⛔ Refusing image from disallowed host: ${url}`);
+    return null;
+  }
   if (manifest[url] && fs.existsSync(path.join(OUT_DIR, manifest[url].replace(/^\/img\//, '')))) {
     return manifest[url];
   }
@@ -68,16 +102,10 @@ async function downloadAndOptimizeImage(url, manifest) {
   const outPath = path.join(OUT_DIR, outFileName);
 
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA_IMG, Referer: BASE },
-      signal: ctrl.signal
-    });
-    clearTimeout(t);
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
+    // fetchAllowedImage re-validates the host on every redirect hop and
+    // refuses a non-image content-type before anything is buffered.
+    const res = await fetchAllowedImage(url, { referer: BASE, ua: UA_IMG, timeoutMs: 15000 });
+    const buf = await readBodyLimited(res, MAX_IMAGE_BYTES);
 
     const isCover = /\/l\.(jpg|jpeg|png|webp)$/i.test(url) || /mal-logo|logo/i.test(url);
     const img = sharp(buf, { failOn: 'none' });
@@ -91,7 +119,7 @@ async function downloadAndOptimizeImage(url, manifest) {
     }
 
     const webpBuf = await pipe.toBuffer();
-    fs.writeFileSync(outPath, webpBuf);
+    writeFileAtomic(outPath, webpBuf);
     manifest[url] = `/img/${outFileName}`;
     console.log(`  📸 Image saved: ${url} -> ${manifest[url]}`);
     return manifest[url];
@@ -101,8 +129,35 @@ async function downloadAndOptimizeImage(url, manifest) {
   }
 }
 
+// Invoke npm portably (Windows has npm.cmd, which execFileSync cannot launch
+// without a shell). Run npm's CLI JS with the current node binary instead —
+// argv stays an array, so no shell interpolation of scraped input is possible.
+function npmCliPath() {
+  if (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) {
+    return process.env.npm_execpath;
+  }
+  const nodeDir = path.dirname(process.execPath);
+  const candidates = [
+    path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'), // Windows layout
+    path.resolve(nodeDir, '../lib/node_modules/npm/bin/npm-cli.js') // POSIX layout
+  ];
+  for (const c of candidates) if (fs.existsSync(c)) return c;
+  return null;
+}
+
+function runNpm(args, cwd) {
+  const cli = npmCliPath();
+  if (cli) {
+    execFileSync(process.execPath, [cli, ...args], { cwd, stdio: 'inherit' });
+  } else if (process.platform !== 'win32') {
+    execFileSync('npm', args, { cwd, stdio: 'inherit' });
+  } else {
+    throw new Error('Could not locate npm-cli.js; run the build manually with "npm run build" in site/.');
+  }
+}
+
 export async function syncNewReleases(options = {}) {
-  const { autoPush = false, autoBuild = false } = options;
+  const { autoPush = false, autoBuild = false, commitOnly = false } = options;
   loadEnv();
   jar.load();
   ensureDirs();
@@ -117,7 +172,10 @@ export async function syncNewReleases(options = {}) {
   let existingUrls = [];
   try {
     existingUrls = JSON.parse(fs.readFileSync(URLS_FILE, 'utf8'));
-  } catch {}
+    if (!Array.isArray(existingUrls)) throw new Error('post_urls.json is not an array');
+  } catch (e) {
+    console.warn(`⚠️ Could not read ${URLS_FILE} (${e.message}); every discovered post will be treated as new.`);
+  }
 
   const existingSet = new Set(existingUrls);
   const newUrls = discovered.filter((u) => {
@@ -139,7 +197,9 @@ export async function syncNewReleases(options = {}) {
   let manifest = {};
   try {
     manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
-  } catch {}
+  } catch (e) {
+    console.warn(`⚠️ Could not read ${MANIFEST} (${e.message}); images will be re-downloaded/re-optimized.`);
+  }
 
   const newTitles = [];
   const newImages = new Set();
@@ -160,18 +220,13 @@ export async function syncNewReleases(options = {}) {
     const postData = parsePost(html, url);
     const slug = slugFromUrl(url);
     const outFile = path.join(POSTS_DIR, `${slug}.json`);
-    fs.writeFileSync(outFile, JSON.stringify(postData, null, 2));
+    writeJsonAtomic(outFile, postData);
     newTitles.push(postData.title);
     console.log(`  ✅ Parsed: "${postData.title}"`);
 
     // Collect images
     if (postData.cover) newImages.add(postData.cover);
     for (const im of postData.contentImages ?? []) newImages.add(im);
-    for (const q of postData.qualities ?? []) {
-      for (const l of q.links ?? []) {
-        // any quality links
-      }
-    }
 
     existingSet.add(url);
     await sleepBetween(400);
@@ -179,17 +234,17 @@ export async function syncNewReleases(options = {}) {
 
   // Update post_urls.json
   const updatedList = [...existingSet].sort();
-  fs.writeFileSync(URLS_FILE, JSON.stringify(updatedList, null, 2));
+  writeJsonAtomic(URLS_FILE, updatedList);
 
   // Process & optimize new images
   if (newImages.size > 0) {
     console.log(`\n🖼️ Optimizing ${newImages.size} image(s)...`);
     for (const imgUrl of newImages) {
-      if (imgUrl.includes('rhythm-sub.com/wp-content')) {
+      if (isAllowedImageHost(imgUrl)) {
         await downloadAndOptimizeImage(imgUrl, manifest);
       }
     }
-    fs.writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2));
+    writeJsonAtomic(MANIFEST, manifest);
   }
 
   // Guard: never rebuild from a partial POSTS_DIR (e.g. CI run where the
@@ -207,7 +262,7 @@ export async function syncNewReleases(options = {}) {
 
   // Rebuild data model (series.json)
   console.log('\n🏗️ Rebuilding series & episode model...');
-  execSync(`node "${path.resolve(DATA, '../scraper/src/build-model.mjs')}"`, {
+  execFileSync(process.execPath, [path.resolve(DATA, '../scraper/src/build-model.mjs')], {
     stdio: 'inherit',
     cwd: path.resolve(DATA, '..')
   });
@@ -215,32 +270,66 @@ export async function syncNewReleases(options = {}) {
   // Optional build site
   if (autoBuild) {
     console.log('\n🚀 Building site pages...');
-    execSync('npm run build', { cwd: path.resolve(DATA, '../site'), stdio: 'inherit' });
+    runNpm(['run', 'build'], path.resolve(DATA, '../site'));
   }
 
-  // Optional Git commit & push
-  if (autoPush) {
-    console.log('\n📤 Pushing changes to GitHub...');
-    const commitMsg = `Sync new release: ${newTitles.slice(0, 3).join(', ')}${newTitles.length > 3 ? ` (+${newTitles.length - 3} more)` : ''}`;
+  // Optional Git commit (and push for local --push runs). --commit-only stages
+  // and commits exactly the allowlisted paths but never pushes: CI pushes the
+  // sync-data snapshot first, then main, so a failed snapshot can't leave main
+  // referencing posts that were never archived.
+  if (autoPush || commitOnly) {
+    console.log(autoPush ? '\n📤 Committing & pushing changes to GitHub...' : '\n💾 Committing changes (no push)...');
+    // commitMsg is built from scraped post titles — untrusted input. It is passed
+    // as an argv element via execFileSync, so it can never reach a shell.
+    const cleanTitles = newTitles
+      .map((t) => String(t).replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const commitMsg =
+      `Sync new release: ${cleanTitles.slice(0, 3).join(', ')}` +
+      `${cleanTitles.length > 3 ? ` (+${cleanTitles.length - 3} more)` : ''}`;
+    const repoRoot = path.resolve(DATA, '..');
     try {
-      execSync('git add data/ site/public/img/ site/public/img-manifest.json', { stdio: 'inherit' });
-      execSync(`git commit -m "${commitMsg}"`, { stdio: 'inherit' });
-      execSync('git push origin main', { stdio: 'inherit' });
-      console.log('✅ Push complete! Cloudflare Pages will deploy shortly.');
+      execFileSync('git', ['add', '-A', '--', ...COMMIT_PATHS], { cwd: repoRoot, stdio: 'inherit' });
+      // git diff --cached --quiet exits 0 when nothing is staged, 1 when there
+      // are staged changes (execFileSync throws on the non-zero exit).
+      let committed = false;
+      try {
+        execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: repoRoot, stdio: 'ignore' });
+      } catch {
+        execFileSync('git', ['commit', '-m', commitMsg], { cwd: repoRoot, stdio: 'inherit' });
+        committed = true;
+      }
+      if (autoPush) {
+        const branch =
+          process.env.GITHUB_REF_NAME ??
+          execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+        execFileSync('git', ['push', 'origin', branch], { cwd: repoRoot, stdio: 'inherit' });
+        console.log('✅ Push complete! Cloudflare Pages will deploy shortly.');
+      } else {
+        console.log(committed ? '✅ Commit created (not pushed).' : 'ℹ️ Nothing to commit.');
+      }
     } catch (e) {
-      console.error('Git push failed:', e.message);
+      console.error('Git commit/push failed:', e.message);
+      // Never report success when nothing was committed/pushed: CI gates the
+      // snapshot update on this exit code.
+      process.exitCode = 1;
     }
   }
 
-  console.log(`\n🎉 Successfully synced ${newTitles.length} new release(s)!`);
+  if (process.exitCode && process.exitCode !== 0) {
+    console.error(`\n⚠️ Synced ${newTitles.length} new release(s) locally, but a required git step failed.`);
+  } else {
+    console.log(`\n🎉 Successfully synced ${newTitles.length} new release(s)!`);
+  }
   return { count: newTitles.length, newTitles };
 }
 
 // CLI direct run
-if (process.argv[1]?.endsWith('sync.mjs')) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const autoPush = process.argv.includes('--push') || process.argv.includes('--git');
   const autoBuild = process.argv.includes('--build');
-  syncNewReleases({ autoPush, autoBuild }).catch((e) => {
+  const commitOnly = process.argv.includes('--commit-only');
+  syncNewReleases({ autoPush, autoBuild, commitOnly }).catch((e) => {
     console.error('Fatal sync error:', e);
     process.exit(1);
   });

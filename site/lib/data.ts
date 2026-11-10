@@ -1,5 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { sanitizePageHtml } from './sanitize';
+import { safeUrl } from './url';
+
+// Resolve site/data roots from this module's location (site/lib/ -> site/ -> repo root)
+// instead of process.cwd(), which is only correct when the build runs from site/.
+const SITE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DATA_ROOT = path.resolve(SITE_ROOT, '..', 'data');
 
 export type Quality = { quality: string; links: { name: string; url: string }[] };
 export type Episode = {
@@ -18,7 +26,6 @@ export type Episode = {
   contentImages: string[];
   postId: string | null;
   author: string;
-  contentHtml: string;
 };
 export type Series = {
   key: string;
@@ -45,21 +52,62 @@ export type Series = {
 
 type Manifest = Record<string, string>;
 
-let manifest: Manifest = {};
+let manifest: Manifest;
 try {
-  manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'public', 'img-manifest.json'), 'utf8'));
-} catch {}
+  // Kept OUTSIDE public/ so the manifest (222KB of raw upstream URLs) is never
+  // published into the static export — it is build-time data only.
+  manifest = JSON.parse(fs.readFileSync(path.join(SITE_ROOT, 'img-manifest.json'), 'utf8'));
+} catch (e) {
+  throw new Error(`Failed to read img-manifest.json: ${(e as Error).message}`);
+}
 
 export function img(url?: string | null): string {
   if (!url) return '/placeholder.svg';
   const local = manifest[url];
   if (local) return local;
-  if (url.startsWith('/')) return url;
+  // Only allow local site assets through; reject protocol-relative
+  // (//evil.com/x) and any absolute URL to avoid referrer/tracker leaks.
+  // Off-allowlist hosts (e.g. 28 i.imgur.com URLs) intentionally fall back
+  // to the placeholder instead of hotlinking — isAllowedImageHost() in
+  // scraper/src/util.mjs gates the same list at download time.
+  if (url.startsWith('/') && !url.startsWith('//')) return url;
   return '/placeholder.svg';
 }
 
-function loadJson(rel: string) {
-  return JSON.parse(fs.readFileSync(path.join(process.cwd(), '..', 'data', rel), 'utf8'));
+export { cssUrl } from './css-url';
+
+/**
+ * Validate the shape of series.json at load time instead of letting a
+ * truncated or corrupt file produce `undefined` fields downstream (which
+ * surface as blank cards, wrong links, or a crash in a server component).
+ * Throws with the offending index so the bad file is identifiable.
+ */
+function assertSeriesShape(value: unknown): asserts value is Series[] {
+  if (!Array.isArray(value)) throw new Error('series.json must be a JSON array');
+  value.forEach((s, i) => {
+    if (!s || typeof s !== 'object') throw new Error(`series.json[${i}] is not an object`);
+    const rec = s as Record<string, unknown>;
+    for (const key of ['key', 'slug', 'title'] as const) {
+      if (typeof rec[key] !== 'string' || !(rec[key] as string)) {
+        throw new Error(`series.json[${i}].${key} must be a non-empty string`);
+      }
+    }
+    if (!Array.isArray(rec.episodes)) throw new Error(`series.json[${i}].episodes must be an array`);
+    rec.episodes.forEach((ep, j) => {
+      if (!ep || typeof ep !== 'object') throw new Error(`series.json[${i}].episodes[${j}] is not an object`);
+    });
+  });
+}
+
+function loadJson(rel: string): Series[] {
+  const file = path.join(DATA_ROOT, rel);
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assertSeriesShape(parsed);
+    return parsed;
+  } catch (e) {
+    throw new Error(`Failed to read ${rel}: ${(e as Error).message}`);
+  }
 }
 
 const raw: Series[] = loadJson('series.json');
@@ -194,17 +242,6 @@ function splitForeignWorks(seriesList: Series[]): Series[] {
 
 const merged = splitForeignWorks(raw);
 
-function displayNumber(ep: { label: string; number: number | null; slug: string }): string | null {
-  // Ignore scraper noise that can trail the number ("[HEXHASH]", "LEAKED") so a
-  // title like "Series - 01 [CC80CD66] LEAKED" still yields a badge.
-  const label = ep.label.replace(/\[[0-9A-Fa-f]{6,12}\]/g, ' ').replace(/\s*LEAKED\s*$/i, '');
-  const range = label.match(/(\d{1,4})\s*[~\-]\s*(\d{1,4})(?!\d)/);
-  if (range && /~/.test(label)) return `${parseInt(range[1], 10)}~${parseInt(range[2], 10)}`;
-  const inLabel = label.match(/(?:-|\s|#|الحلقة\s)(\d{1,4})(?!\d)\s*(?:END|الأخيرة)?\s*$/i);
-  if (inLabel) return String(parseInt(inLabel[1], 10));
-  return ep.number != null ? String(ep.number) : null;
-}
-
 function safeSynopsis(s: string | null | undefined): string {
   if (!s) return '';
   let t = String(s)
@@ -254,7 +291,12 @@ function cleanEpisodeText(ep: Episode): void {
   ep.label = cleanLabel(ep.label);
   for (const q of ep.qualities) {
     q.quality = cleanTags(q.quality);
-    for (const l of q.links) l.name = cleanTags(l.name);
+    q.links = (q.links ?? [])
+      .map((l) => ({ name: cleanTags(l.name), url: safeUrl(l.url) ?? '' }))
+      // Drop links with missing/unsafe schemes (e.g. javascript: from a
+      // compromised upstream or a malformed team release) — every href the
+      // site renders comes from here.
+      .filter((l) => l.name && l.url);
   }
 }
 
@@ -277,7 +319,7 @@ for (const s of merged) {
       if (m) e.label = `${s.title} - ${parseInt(m[1], 10)}`;
     }
     e.contentImages = e.contentImages ?? [];
-    const distinct = e.contentImages.find((u) => u && u !== e.cover && !/icons8|download-from-cloud/i.test(u));
+    const distinct = e.contentImages.find((u) => u && u !== e.cover && !/\.svg$/i.test(u) && !/icons8|download-from-cloud/i.test(u));
     e.cardImage = distinct ?? e.cover ?? null;
     cleanEpisodeText(e);
   }
@@ -333,14 +375,59 @@ export const franchises: { name: string; works: Series[] }[] = [...familyMap.ent
   })
   .sort((a, b) => b.works.length - a.works.length);
 
-let teamReleases: Record<string, unknown>[] = [];
-try {
-  const dir = path.join(process.cwd(), '..', 'data', 'releases');
-  teamReleases = fs
-    .readdirSync(dir)
+type TeamReleaseFile = { file: string; value: Record<string, unknown> };
+
+function readTeamReleases(): TeamReleaseFile[] {
+  const dir = path.join(DATA_ROOT, 'releases');
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw new Error(`Failed to read data/releases: ${(e as Error).message}`);
+  }
+  return entries
     .filter((f) => f.endsWith('.json') && !f.startsWith('_'))
-    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
-} catch {}
+    .map((file) => {
+      try {
+        const value = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          throw new Error('expected a JSON object');
+        }
+        return { file, value };
+      } catch (e) {
+        throw new Error(`Invalid data/releases/${file}: ${(e as Error).message}`);
+      }
+    });
+}
+
+function normalizeTeamQualities(input: unknown, file: string): Quality[] {
+  if (input == null) return [];
+  if (!Array.isArray(input)) throw new Error(`data/releases/${file}: qualities must be an array`);
+  return input.map((q, qi) => {
+    if (!q || typeof q !== 'object' || Array.isArray(q)) {
+      throw new Error(`data/releases/${file}: qualities[${qi}] must be an object`);
+    }
+    const quality = typeof q.quality === 'string' ? cleanTags(q.quality) : '';
+    if (!quality) throw new Error(`data/releases/${file}: qualities[${qi}].quality is required`);
+    if (!Array.isArray(q.links)) throw new Error(`data/releases/${file}: qualities[${qi}].links must be an array`);
+    const links = q.links.map((l: unknown, li: number) => {
+      if (!l || typeof l !== 'object' || Array.isArray(l)) {
+        throw new Error(`data/releases/${file}: qualities[${qi}].links[${li}] must be an object`);
+      }
+      const link = l as Record<string, unknown>;
+      const name = typeof link.name === 'string' ? cleanTags(link.name) : '';
+      const url = safeUrl(typeof link.url === 'string' ? link.url : null);
+      if (!name || !url) {
+        throw new Error(`data/releases/${file}: qualities[${qi}].links[${li}] needs a name and a safe URL`);
+      }
+      return { name, url };
+    });
+    return { quality, links };
+  });
+}
+
+const teamReleases = readTeamReleases();
 
 function slugifySeries(title: string): string {
   return title
@@ -350,11 +437,21 @@ function slugifySeries(title: string): string {
     .replace(/\s+/g, '-');
 }
 
-for (const r of teamReleases) {
-  const slug = String(r.seriesSlug ?? slugifySeries(String(r.seriesTitle ?? '')));
-  if (!slug || !r.label) continue;
+for (const [idx, { file, value: r }] of teamReleases.entries()) {
+  const rawSlug = String(r.seriesSlug ?? '').trim();
+  // Arabic-only titles slugify to '' — skip instead of silently dropping
+  // via a Date.now() fallback that collides on every render.
+  const slug = rawSlug || slugifySeries(String(r.seriesTitle ?? ''));
+  if (!slug) continue;
+  const label = typeof r.label === 'string' ? r.label.trim() : '';
+  if (!label) throw new Error(`data/releases/${file}: label is required`);
+  if (r.episodeNumber != null && !Number.isFinite(Number(r.episodeNumber))) {
+    throw new Error(`data/releases/${file}: episodeNumber must be numeric`);
+  }
+  const epNum = r.episodeNumber != null ? Number(r.episodeNumber) : null;
   let s = merged.find((x) => x.slug === slug);
   if (!s) {
+    const y = r.date ? Number(String(r.date).slice(0, 4)) : NaN;
     s = {
       key: `team:${slug}`,
       malUrl: null,
@@ -365,7 +462,7 @@ for (const r of teamReleases) {
       genres: [],
       status: 'Ongoing',
       studio: null,
-      year: r.date ? Number(String(r.date).slice(0, 4)) : null,
+      year: Number.isFinite(y) && y > 0 ? y : null,
       season: null,
       type: { text: 'TV', slug: 'tv' },
       episodesCount: null,
@@ -379,31 +476,46 @@ for (const r of teamReleases) {
     };
     merged.push(s);
   }
+  const dateStr = r.date == null ? null : String(r.date);
+  const isoDate = dateStr ? (dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00+03:00`) : null;
+  if (isoDate && Number.isNaN(Date.parse(isoDate))) {
+    throw new Error(`data/releases/${file}: date is not parseable`);
+  }
   s.episodes.push({
-    slug: `${slug}-${r.episodeNumber ?? Date.now()}`,
+    slug: `${slug}-${epNum ?? `team-${idx}`}`,
     url: `/anime/${slug}/`,
-    number: r.episodeNumber != null ? Number(r.episodeNumber) : null,
-    displayNum: r.episodeNumber != null ? String(r.episodeNumber) : null,
-    label: String(r.label),
-    date: r.date ? `${r.date}T00:00:00+03:00` : null,
+    number: epNum,
+    displayNum: epNum != null ? String(epNum) : null,
+    label,
+    date: isoDate,
     rating: null,
     cover: typeof r.coverUrl === 'string' && r.coverUrl.startsWith('/img/') ? r.coverUrl : null,
     synopsis: String(r.synopsis ?? ''),
     trailerYoutubeId: null,
-    qualities: Array.isArray(r.qualities)
-      ? (r.qualities as Quality[])
-      : [],
+    qualities: normalizeTeamQualities(r.qualities, file),
     contentImages: [],
     postId: null,
-    author: 'team',
-    contentHtml: ''
+    author: 'team'
   });
-  if (Object.keys(r.staff ?? {}).length) {
-    for (const [role, names] of Object.entries(r.staff as Record<string, string[]>)) {
-      s.staff[role] = [...new Set([...(s.staff[role] ?? []), ...names])];
+  if (r.staff != null) {
+    if (typeof r.staff !== 'object' || Array.isArray(r.staff)) {
+      throw new Error(`data/releases/${file}: staff must be an object`);
+    }
+    for (const [role, names] of Object.entries(r.staff)) {
+      if (!Array.isArray(names)) throw new Error(`data/releases/${file}: staff.${role} must be an array`);
+      const validNames = names.map((n) => String(n).trim()).filter(Boolean);
+      s.staff[role] = [...new Set([...(s.staff[role] ?? []), ...validNames])];
     }
   }
-  s.episodes.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
+  // Keep descending (latest first) — matches the 266-301 sort above;
+  // ascending here made schedule's episodes[0] the earliest episode.
+  s.episodes.sort((a, b) => {
+    if (a.date && b.date) {
+      const dCmp = String(b.date).localeCompare(String(a.date));
+      if (dCmp !== 0) return dCmp;
+    }
+    return (b.number ?? 0) - (a.number ?? 0);
+  });
 }
 
 export const allSeries: Series[] = merged;
@@ -412,7 +524,9 @@ function asciiSlug(raw: string): string {
   let s = raw;
   try {
     s = decodeURIComponent(raw);
-  } catch {}
+  } catch {
+    // Malformed percent-encoding: keep the raw string and let the slugifier strip it.
+  }
   s = s
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -436,43 +550,79 @@ export type SitePage = {
   title: string;
   contentHtml: string;
   images: string[];
+  /** Detected in the RAW markup before sanitization (which strips <form>). */
+  hasForm?: boolean;
 };
 
-type FooterData = { footerHtml: string; socials: { name: string; url: string }[] };
-
 let sitePages: Record<string, SitePage> = {};
-let footerData: FooterData = { footerHtml: '', socials: [] };
 let curatedProjectSlugs: string[] = [];
 let siteSocials: { href: string; label: string }[] = [];
 try {
-  const pagesDir = path.join(process.cwd(), '..', 'data', 'pages');
+  const pagesDir = path.join(DATA_ROOT, 'pages');
+  const mapPageImages = (html: string): string =>
+    html.replace(/https?:\/\/(?:i\d\.wp\.com\/)?rhythm-sub\.com\/wp-content\/[^"'\s)]+/g, (u) => {
+      const clean = u.replace(/^(https?:\/\/)(i\d\.wp\.com\/)?rhythm-sub\.com/, 'https://rhythm-sub.com').split('?')[0];
+      return img(clean);
+    });
+  const normalizeWpImgRows = (html: string): string =>
+    html.replace(
+      /<p([^>]*)>((?:\s|&nbsp;)*(?:<img[^>]*>(?:\s|&nbsp;)*)+)<\/p>/gi,
+      (m, attrs: string, inner: string) => {
+        // Idempotent: sitePage() already normalizes, then about/support call
+        // mappedHtml() which normalizes again. Skip rows already tagged.
+        if (attrs.includes('wp-img-row')) return m;
+        const imgs = inner.match(/<img[^>]*>/g) ?? [];
+        const single = imgs.length === 1 ? ' single' : '';
+        return `<p${attrs} class="wp-img-row${single}">${imgs.join('')}</p>`;
+      }
+    );
   for (const f of fs.readdirSync(pagesDir).filter((x) => x.endsWith('.json') && !x.startsWith('_'))) {
     const p = JSON.parse(fs.readFileSync(path.join(pagesDir, f), 'utf8'));
     const key = p.key ?? f.replace(/\.json$/, '');
-    sitePages[key] = { ...p, key, images: (p.images ?? []).map((u: string) => img(u)) };
+    const rawHtml = typeof p.contentHtml === 'string' ? p.contentHtml : '';
+    // Detect the contact form in the RAW markup: sanitizePageHtml() strips
+    // <form> entirely, so the flag must be captured before it runs.
+    const hasForm = /<form[\s>]/i.test(rawHtml);
+    // Store sanitized+mapped HTML so every consumer (including accidental direct
+    // use of sitePage().contentHtml) gets safe output. mappedHtml() remains for
+    // raw HTML inputs and is idempotent-safe for already-sanitized markup.
+    const contentHtml = normalizeWpImgRows(mapPageImages(sanitizePageHtml(rawHtml)));
+    sitePages[key] = { ...p, key, contentHtml, hasForm, images: (p.images ?? []).map((u: string) => img(u)) };
   }
-  footerData = JSON.parse(fs.readFileSync(path.join(pagesDir, '_footer.json'), 'utf8'));
   const extras = JSON.parse(fs.readFileSync(path.join(pagesDir, '_home_extras.json'), 'utf8'));
   siteSocials = extras.socials ?? [];
   curatedProjectSlugs = (extras.projectPostUrls ?? [])
-    .map((u: string) => asciiSlug(normalizeSlug(new URL(u).pathname.split('/').pop() ?? '')))
+    .map((u: string) => {
+      try {
+        return asciiSlug(normalizeSlug(new URL(u).pathname.split('/').pop() ?? ''));
+      } catch {
+        console.warn(`⚠️ Skipping malformed project URL: ${u}`);
+        return '';
+      }
+    })
     .filter(Boolean);
-} catch {}
+} catch (e) {
+  throw new Error(`Failed to read data/pages: ${(e as Error).message}`);
+}
 
 export function sitePage(key: string): SitePage | null {
   return sitePages[key] ?? null;
 }
 
 export function mappedHtml(html: string): string {
-  const mapped = html.replace(/https?:\/\/(?:i\d\.wp\.com\/)?rhythm-sub\.com\/wp-content\/[^"'\s)]+/g, (u) => {
+  // Scraped upstream markup is untrusted: sanitize through an allowlist before
+  // it reaches dangerouslySetInnerHTML (stored XSS if the source is compromised).
+  const mapped = sanitizePageHtml(html).replace(/https?:\/\/(?:i\d\.wp\.com\/)?rhythm-sub\.com\/wp-content\/[^"'\s)]+/g, (u) => {
     const clean = u.replace(/^(https?:\/\/)(i\d\.wp\.com\/)?rhythm-sub\.com/, 'https://rhythm-sub.com').split('?')[0];
     return img(clean);
   });
   // Normalize WordPress card rows: strip &nbsp; spacers inside paragraphs that hold
   // multiple images, so CSS can lay them out as clean centered flex rows.
+  // Idempotent w.r.t. sitePage()'s identical transform (see normalizeWpImgRows).
   return mapped.replace(
-    /<p([^>]*)>((?:\s|&nbsp;)*(?:<img[^>]*>(?:\s|&nbsp;*)*)+)<\/p>/gi,
-    (_m, attrs: string, inner: string) => {
+    /<p([^>]*)>((?:\s|&nbsp;)*(?:<img[^>]*>(?:\s|&nbsp;)*)+)<\/p>/gi,
+    (m, attrs: string, inner: string) => {
+      if (attrs.includes('wp-img-row')) return m;
       const imgs = inner.match(/<img[^>]*>/g) ?? [];
       const single = imgs.length === 1 ? ' single' : '';
       return `<p${attrs} class="wp-img-row${single}">${imgs.join('')}</p>`;
@@ -480,16 +630,20 @@ export function mappedHtml(html: string): string {
   );
 }
 
-export const footer = footerData;
 export const socials = siteSocials;
 
 const bySlugMap = new Map(allSeries.map((s) => [s.slug, s]));
+const byKeyMap = new Map(allSeries.map((s) => [s.key, s]));
 
 export const currentProjects = curatedProjectSlugs.length
   ? curatedProjectSlugs.map((sl) => bySlugMap.get(sl)).filter(Boolean) as Series[]
   : allSeries
       .filter((s) => /ongoing/i.test(s.status ?? ''))
-      .filter((s) => s.lastReleaseAt && Date.now() - new Date(s.lastReleaseAt).getTime() < 30 * 24 * 3600 * 1000)
+      .filter((s) => {
+        if (!s.lastReleaseAt) return false;
+        const age = Date.now() - new Date(s.lastReleaseAt).getTime();
+        return age >= 0 && age < 30 * 24 * 3600 * 1000;
+      })
       .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
 
 export const latestReleases = allSeries
@@ -510,14 +664,10 @@ export function formatWorksCount(count: number): string {
   return `${count} عمل`;
 }
 
-export const ongoing = allSeries.filter((s) => /ongoing/i.test(s.status ?? ''));
-
 export function bySlug(slug: string) {
-  return allSeries.find((s) => s.slug === slug);
+  return bySlugMap.get(slug);
 }
 
 export function byKey(key: string) {
-  return allSeries.find((s) => s.key === key);
+  return byKeyMap.get(key);
 }
-
-export const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0-9'.split('');

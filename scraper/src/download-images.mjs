@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { DATA } from './util.mjs';
+import { DATA, isAllowedImageHost, safeRel, safeJoin, readBodyLimited, writeJsonAtomic, fetchAllowedImage } from './util.mjs';
 
 const IMG_DIR = path.join(DATA, 'images');
 const MAP_FILE = path.join(DATA, 'image_map.json');
 const CONCURRENCY = 4;
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const UA_IMG = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36';
 
 function loadMap() {
@@ -20,11 +21,11 @@ function collectUrls() {
   const series = JSON.parse(fs.readFileSync(path.join(DATA, 'series.json'), 'utf8'));
   const urls = new Set();
   for (const s of series) {
-    if (s.cover?.includes('rhythm-sub.com/wp-content')) urls.add(s.cover);
+    if (s.cover && isAllowedImageHost(s.cover)) urls.add(s.cover);
     for (const e of s.episodes) {
-      if (e.cover?.includes('rhythm-sub.com/wp-content')) urls.add(e.cover);
+      if (e.cover && isAllowedImageHost(e.cover)) urls.add(e.cover);
       for (const im of e.contentImages ?? []) {
-        if (im.includes('rhythm-sub.com/wp-content')) urls.add(im);
+        if (isAllowedImageHost(im)) urls.add(im);
       }
     }
   }
@@ -32,7 +33,7 @@ function collectUrls() {
   if (fs.existsSync(pagesDir)) {
     for (const f of fs.readdirSync(pagesDir).filter((x) => x.endsWith('.json') && !x.startsWith('_'))) {
       const p = JSON.parse(fs.readFileSync(path.join(pagesDir, f), 'utf8'));
-      for (const im of p.images ?? []) if (im.includes('rhythm-sub.com/wp-content')) urls.add(im);
+      for (const im of p.images ?? []) if (isAllowedImageHost(im)) urls.add(im);
     }
   }
   return [...urls].sort();
@@ -40,29 +41,27 @@ function collectUrls() {
 
 function localPath(url, map) {
   const u = new URL(url);
-  const decoded = decodeURIComponent(u.pathname).replace(/^\//, '').replace(/[:*?"<>|]/g, '_');
-  let rel = decoded;
-  if (path.join(IMG_DIR, rel).length > 200) {
-    const ext = path.extname(decoded) || '.jpg';
-    const base = path.basename(decoded, ext);
-    const dir = path.dirname(decoded);
+  let rel = safeRel(u);
+  if (!rel) throw new Error(`Refusing to write inside the images root for ${u.href}`);
+  if (safeJoin(IMG_DIR, rel).length > 200) {
+    const ext = path.extname(rel) || '.jpg';
+    const base = path.basename(rel, ext);
+    const dir = path.dirname(rel);
     rel = path
       .join(dir, `${base.slice(0, 30)}_${crypto.createHash('sha1').update(base).digest('hex').slice(0, 12)}${ext}`)
       .replace(/\\/g, '/');
     map[url] = rel;
   }
-  return path.join(IMG_DIR, rel);
+  return safeJoin(IMG_DIR, rel);
 }
 
 async function download(url, dest, tries = 3) {
   for (let i = 0; i < tries; i++) {
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 60000);
-      const res = await fetch(url, { headers: { 'User-Agent': UA_IMG }, signal: ctrl.signal });
-      clearTimeout(t);
-      if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
-      const buf = Buffer.from(await res.arrayBuffer());
+      // fetchAllowedImage re-validates the host on every redirect hop and
+      // refuses a non-image content-type before anything is buffered.
+      const res = await fetchAllowedImage(url, { ua: UA_IMG });
+      const buf = await readBodyLimited(res, MAX_IMAGE_BYTES);
       if (buf.length < 500) throw new Error(`too small (${buf.length}B)`);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, buf);
@@ -113,8 +112,8 @@ async function main() {
   const queue = [...pending];
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker(queue)));
 
-  fs.writeFileSync(MAP_FILE, JSON.stringify(map, null, 2));
-  fs.writeFileSync(path.join(DATA, 'image_failures.json'), JSON.stringify(failed, null, 2));
+  writeJsonAtomic(MAP_FILE, map);
+  writeJsonAtomic(path.join(DATA, 'image_failures.json'), failed);
   console.log(`DONE ok=${done - failed.length} failed=${failed.length} total=${(bytes / 1048576).toFixed(1)}MB`);
 }
 
