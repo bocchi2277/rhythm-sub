@@ -34,7 +34,12 @@ $Trigger.Repetition = (New-ScheduledTaskTrigger -Once -At '00:15' `
     -RepetitionInterval (New-TimeSpan -Hours 6) `
     -RepetitionDuration (New-TimeSpan -Days 3650)).Repetition
 
-$Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+# WakeToRun: if the PC is ASLEEP at a scheduled time, Windows wakes it,
+# runs the sync, and lets it sleep again per the power plan. Limits:
+# - works from SLEEP only, NOT from shutdown/hibernate
+# - on battery, wake timers are disabled by default (needs AC power, or
+#   "Allow wake timers" enabled for battery in the power plan)
+$Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
     -MultipleInstances IgnoreNew
 
