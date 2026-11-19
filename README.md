@@ -81,6 +81,7 @@ node src/build-model.mjs      # بناء السلاسل → data/series.json
 node src/download-images.mjs  # تنزيل الصور الأصلية
 npm run optimize              # إنتاج WebP بأسماء content-hash + img-manifest.json (src/optimize-images.mjs)
 npm run optimize:force        # إعادة تحسين كل الصور + تنظيف اليتامى (هجرة/تغيّر محتوى المصدر)
+npm run recover               # استرجاع الحلقات الناقصة: جرد REST كامل (RHYTHM_APP_PASSWORD) → فرق مع الجرد المحلي → سحب HTML → إعادة بناء
 ```
 
 ## المزامنة المحلية الدائمة (حل مشكلة Cloudflare)
