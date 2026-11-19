@@ -83,6 +83,24 @@ npm run optimize              # إنتاج WebP بأسماء content-hash + img-
 npm run optimize:force        # إعادة تحسين كل الصور + تنظيف اليتامى (هجرة/تغيّر محتوى المصدر)
 ```
 
+## المزامنة المحلية الدائمة (حل مشكلة Cloudflare)
+
+السحب من IPs الداتاسنتر (GitHub runners) بيتحدى بـ"Just a moment" من Cloudflare بتاع الموقع الأصلي — وكوكي ووردبريس بيأوثق على التطبيق بس، ملوش قيمة على الحافة. الحل: السحب من الجهاز المحلي (IP سكني بيعدي نظيف — اتقاس 2026-11-19 — وتسجيل الدخول المباشر بـuser/pass شغال من البيت، يعني **مفيش اعتماد على كوكي الـ14 يوم خالص**):
+
+```bash
+# تسجيل المهمة المجدولة (كل 6 ساعات، بتعوّض التشغيلات الفايتة لما الجهاز كان مقفول/نايم)
+powershell -ExecutionPolicy Bypass -File scraper/scripts/register-local-sync.ps1
+# تشغيل يدوي فوري
+scraper\scripts\local-sync.cmd
+# إلغاء المهمة
+powershell -ExecutionPolicy Bypass -File scraper/scripts/register-local-sync.ps1 -Unregister
+```
+
+- المهمة: **"Rhythm-Sub Local Sync"** — كل 6 ساعات (00:15/06:15/12:15/18:15)، `StartWhenAvailable`، بدون أدمن وبدون كلمة مرور مخزنة. اللوج: `data/sync-local.log` (مستبعد من git).
+- أول تشغيل حقيقي (2026-11-19) لقى وزامن **6 إصدارات جديدة** كانت المزامنة السحابية مش شايفاها — دفعتها وCI عدّى عليها.
+- `auto-sync` السحابي لسه شغال كـfallback احتياطي؛ لو إشعارات فشله المتقطعة بتضايقك، عطّل الـ`schedule` trigger في `auto-sync.yml` وسيب `workflow_dispatch` للتشغيل اليدوي.
+- لتقوية الـfallback السحابي (اختياري): فلتر `auth_cookie_expiration` الموثق تحت (كوكي سنة بدل 14 يوم) + حساب WordPress بدور Subscriber مخصص للسحب (أقل صلاحية).
+
 ## المزامنة التلقائية والجودة
 
 - `.github/workflows/auto-sync.yml` — سحب دوري للإصدارات الجديدة (cron `*/30`؛ القياس الفعلي على GitHub 4–6 تشغيلات/يوم لا 48): التزام محلي فقط (`--commit-only`) ثم نشر لقطة posts على فرع `sync-data` والتحقق منها **قبل** دفع main (فشل اللقطة يمنع دفع main). اللقطة تُفحص قبل الاستعمال (أسماء مطلقة/هاربة، symlink/hardlink، أعضاء خارج `posts/`، وJSON تالف لكل ملف) ولا تُنشر إذا كانت أصغر من المستعاد.
