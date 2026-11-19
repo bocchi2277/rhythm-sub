@@ -8,7 +8,7 @@
 rhythm/
 ├── shared/rules.mjs      القواعد المشتركة بين الموقع والسكريبَر (مصدر وحيد: slug/الملخص/الترتيب/staff)
 ├── site/                 الموقع Next.js (output: export ← out/)
-│   ├── app/              الصفحات: الرئيسية /anime/[slug] /list /advanced-search /schedule /about /support
+│   ├── app/              الصفحات: الرئيسية /anime/[slug] /latest /list /advanced-search /schedule /about /support
 │   ├── components/       AnimeCard وباقي المكوّنات
 │   ├── lib/              طبقة البيانات (مقسّمة حسب المسؤولية):
 │   │   ├── data.ts       جذر التركيب: تحميل → تحقق → إصلاح → تطبيع → دمج → اشتقاق
@@ -55,6 +55,10 @@ npm start           # معاينة out/ على المنفذ 3111
 > **فهرس البحث immutable**: `scripts/build-search-index.mjs` يولّد `public/search-index/<hash>.json` (‏149KB، كاش سنة immutable) ويشير إليه `site/search-index-manifest.json` الملتزم به. صفحتا `/search` و`/advanced-search` تجلبانه بـfetch مرة واحدة (نفس مدخل الكاش للصفحتين) بدل حقنه في HTML كل صفحة (صفحة البحث كانت ~215KB وصارت 65KB). المجلد مولّد عند كل بناء ومستبعد من git.
 
 > **الصور content-addressed**: أسماء ملفات WebP مشتقة من sha1 للـbytes المحسّنة (لا من رابط المصدر) — تغيّر الصورة عند نفس الرابط ينتج اسماً جديداً فينكسر كاش immutable تلقائياً، والصور المتطابقة تندمج في ملف واحد. `npm run optimize:force` في scraper يعيد تحسين الكل وينظّف الملفات اليتيمة (غير المشار إليها في img-manifest.json).
+
+> **الوضع النهاري وصفحة /latest**: زر الثيم في الهيدر (desktop وmobile) يبدّل `html[data-theme]` ويحفظ الاختيار في `localStorage('rhythm-theme')`؛ أول زيارة تحترم تفضيل النظام، وسكربت inline صغير في `<head>` يطبّق الثيم قبل أول رسم (منع وميض) وبيتحسب ضمن CSP hashes تلقائياً. كل الألوان tokens في `@theme` — الوضع النهاري مجرد overrides في `globals.css`. صفحة `/latest` بتعرض أحدث 100 إصدار عبر كل السلاسل (الأرشيف الكامل في البحث المتقدم).
+
+> **CodeQL**: `.github/workflows/codeql.yml` بيعمل فحص ثابت لـjavascript-typescript (build-mode none) على كل push/PR لـmain وأسبوعياً. **secret scanning وpush protection** محتاجين تفعيل المالك (bocchi2277): Settings → Code security and analysis → Secret scanning → Enable ثم Push protection → Enable (مجاني للريبو العام؛ الـtoken الحالي صلاحياته push مش admin).
 
 ## إضافة حلقة جديدة يدوياً (بدون سحب)
 

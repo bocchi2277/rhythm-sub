@@ -28,8 +28,16 @@ function socialIcon(href: string) {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl">
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
+        {/* Apply the persisted theme before first paint (no flash). This inline
+            script is hashed into the page's meta CSP by scripts/csp-hashes.mjs.
+            suppressHydrationWarning on <html>: the script mutates it pre-hydration. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('rhythm-theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}document.documentElement.dataset.theme=t;}catch(e){}})();`
+          }}
+        />
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="preload" href="/fonts/ibm-plex-sans-arabic-arabic-400-normal.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <link rel="preload" href="/fonts/ibm-plex-sans-arabic-arabic-700-normal.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
@@ -43,6 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="order-2 md:order-1 md:justify-self-start">
               <h4 className="font-bold mb-3">تصفح</h4>
               <ul className="space-y-2 text-muted">
+                <li><Link href="/latest" className="hover:text-accent">آخر الإصدارات</Link></li>
                 <li><Link href="/list" className="hover:text-accent">قائمة [A-Z]</Link></li>
                 <li><Link href="/series" className="hover:text-accent">السلاسل</Link></li>
                 <li><Link href="/schedule" className="hover:text-accent">جدول الحلقات</Link></li>

@@ -1,0 +1,77 @@
+name: CodeQL — code scanning
+
+# Static security analysis for the JS/TS codebase (site/ Next.js + scraper/
+# Node). build-mode 'none': the JavaScript/TypeScript extractor reads sources
+# directly, so no compiled build is needed — site/'s own `npm run build` is
+# ci.yml's job, not a prerequisite for CodeQL extraction here.
+#
+# OWNER-ONLY NOTE: secret scanning and push protection cannot be enabled from
+# a workflow or with a non-admin token. The repo owner (bocchi2277) must
+# enable them under Settings → Code security and analysis (Secret scanning →
+# Enable, then Push protection → Enable). CodeQL "default setup" in that same
+# page is an owner-toggleable alternative to this file — if the owner enables
+# default setup for javascript-typescript, remove this workflow to avoid
+# duplicate analyses.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, Monday 03:00 UTC — catches drift between pushes.
+    - cron: '0 3 * * 1'
+
+# security-events: write is required to upload SARIF results; everything else
+# stays read-only (PRs from forks get a read-only token regardless).
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+# Same rationale as ci.yml: auto-sync pushes to main whenever new episodes
+# land, so a stale analysis of an older commit has no value.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          # Scope extraction to first-party code only. node_modules, the
+          # Next.js build cache (.next) and the static export (out) are
+          # generated/vendored output, not code we own or ship as source.
+          config: |
+            paths:
+              - site/app
+              - site/lib
+              - site/components
+              - scraper/src
+              - shared
+            paths-ignore:
+              - '**/node_modules'
+              - '**/.next'
+              - '**/out'
+
+      # No-op under build-mode 'none' (the action logs "nothing to autobuild"
+      # and exits 0); kept so the init/autobuild/analyze shape stays standard
+      # if a traced language is ever added.
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+        with:
+          category: '/language:javascript-typescript'

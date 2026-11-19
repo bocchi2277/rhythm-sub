@@ -36,7 +36,7 @@ const COMMIT_PATHS = [
   'site/img-manifest.json'
 ];
 
-function extractUrls(html) {
+export function extractUrls(html) {
   return [...new Set((html.match(POST_RE) ?? []).map((u) => u.replace(/\/+$/, '')))];
 }
 

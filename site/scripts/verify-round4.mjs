@@ -98,6 +98,36 @@ try {
   results.animeTitle = await page.title();
   results.animeHasEpisodes = await page.evaluate(() => document.body.innerText.includes('الحلقة'));
 
+  // 4b. /latest renders the newest-release rows (static server component).
+  await page.goto(`${base}/latest/`, { waitUntil: 'networkidle' });
+  results.latestRows = await page.locator('a[href^="/anime/"]').count();
+  results.latestH1 = await page.evaluate(() => document.querySelector('h1')?.textContent ?? '');
+
+  // 4c. Theme toggle: flips data-theme, re-themes the body, persists across
+  //     reload via the pre-paint inline script (which must pass the CSP).
+  const toggle = page.locator('button[aria-label*="النهاري"], button[aria-label*="الليلي"]').first();
+  results.themeToggleFound = (await toggle.count()) > 0;
+  if (results.themeToggleFound) {
+    // Force a known start: headless Chromium's prefers-color-scheme is light,
+    // so the first-visit default is not guaranteed to be dark. This also
+    // proves the pre-paint script honors localStorage.
+    await page.evaluate(() => localStorage.setItem('rhythm-theme', 'dark'));
+    await page.reload({ waitUntil: 'networkidle' });
+    results.themeInitial = await page.evaluate(() => document.documentElement.dataset.theme);
+    await toggle.click();
+    await page.waitForTimeout(300);
+    results.themeAfterClick = await page.evaluate(() => ({
+      attr: document.documentElement.dataset.theme,
+      bg: getComputedStyle(document.body).backgroundColor,
+      stored: localStorage.getItem('rhythm-theme')
+    }));
+    await page.reload({ waitUntil: 'networkidle' });
+    results.themeAfterReload = await page.evaluate(() => document.documentElement.dataset.theme);
+    // Flip back to dark so the CSP meta check below runs in the base theme.
+    await toggle.click();
+    await page.waitForTimeout(200);
+  }
+
   // 5. The served page carries the hash-based meta CSP (no unsafe-inline).
   results.cspMeta = await page.evaluate(() => {
     const m = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
@@ -118,6 +148,12 @@ const ok =
   /النتائج: [1-9]/.test(results.advancedCount ?? '') &&
   results.homeDomChanged === true &&
   results.animeHasEpisodes === true &&
+  results.latestRows > 0 &&
+  (results.latestH1 ?? '').includes('آخر الإصدارات') &&
+  results.themeAfterClick?.attr === 'light' &&
+  results.themeAfterClick?.bg === 'rgb(244, 246, 250)' &&
+  results.themeAfterClick?.stored === 'light' &&
+  results.themeAfterReload === 'light' &&
   results.cspMeta?.present === true &&
   results.cspMeta?.unsafeInline === false;
 

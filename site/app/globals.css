@@ -169,3 +169,35 @@ body::after {
 .prose-rtl table { width: 100%; border-collapse: collapse; }
 .prose-rtl td, .prose-rtl th { border: 1px solid var(--color-edge); padding: .5rem .75rem; }
 .prose-rtl form { display: none; }
+
+/* ── Light theme ──
+   Token overrides re-theme every utility (bg-bg, text-ink, border-edge…)
+   because they all reference these variables. data-theme is applied before
+   paint by the inline script in layout.tsx (CSP-hashed at build) and toggled
+   by components/ThemeToggle.tsx (persisted in localStorage 'rhythm-theme'). */
+html { color-scheme: dark; }
+html[data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #f4f6fa;
+  --color-panel: #ffffff;
+  --color-card: #ffffff;
+  --color-edge: #d9e0ea;
+  --color-accent: #0f7fb8;
+  --color-accent-deep: #0a5d87;
+  --color-glow: rgba(15, 127, 184, 0.22);
+  --color-ink: #1a2332;
+  --color-muted: #5a6a80;
+}
+/* The ornamental SVGs are dark-tinted; soften them on light instead of
+   shipping a second pair of hand-tuned light SVGs. */
+html[data-theme='light'] body::before { opacity: 0.14; }
+html[data-theme='light'] body::after {
+  background:
+    radial-gradient(ellipse 50% 60% at 50% 50%, rgba(244, 246, 250, 0.92), rgba(244, 246, 250, 0.45) 65%, transparent 100%),
+    linear-gradient(180deg, rgba(15, 127, 184, 0.05) 0%, transparent 25%);
+}
+html[data-theme='light'] .glass { background: rgba(255, 255, 255, 0.78); }
+html[data-theme='light'] .card-hover:hover {
+  box-shadow: 0 12px 32px rgba(26, 35, 50, 0.12), 0 0 0 1px var(--color-accent), 0 4px 24px var(--color-glow);
+}
+html[data-theme='light'] .prose-rtl p.wp-img-row img { box-shadow: 0 8px 24px rgba(26, 35, 50, 0.18); }

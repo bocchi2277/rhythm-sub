@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useId, useState } from 'react';
+import ThemeToggle from './ThemeToggle';
 
 const NAV = [
   { href: '/', label: 'الرئيسية' },
+  { href: '/latest', label: 'آخر الإصدارات' },
   { href: '/schedule', label: 'جدول الحلقات' },
   { href: '/advanced-search', label: 'البحث المتقدم' }
 ];
@@ -147,7 +149,8 @@ export default function Header() {
             فاجئني 🎲
           </Link>
         </nav>
-        <div className="ms-auto hidden lg:flex items-center gap-2 w-full max-w-[280px]">
+        <div className="ms-auto hidden lg:flex items-center gap-2 w-full max-w-[330px]">
+          <ThemeToggle />
           <SearchForm className="flex-1" />
           <a href="https://rhythm-sub.com/wp-login.php" className="btn-accent text-sm font-medium px-4 py-2 rounded-xl whitespace-nowrap">
             تسجيل الدخول
@@ -190,7 +193,10 @@ export default function Header() {
         }`}
       >
         <div className="px-4 py-3 space-y-1 glass">
-          <SearchForm className="pb-2" />
+          <div className="flex items-center gap-2 pb-2">
+            <SearchForm className="flex-1" />
+            <ThemeToggle />
+          </div>
           {[...NAV, { href: '/list', label: 'قائمة [A-Z]' }, { href: '/series', label: 'السلاسل' }, { href: '/about', label: 'من نحن' }, { href: '/random', label: 'فاجئني 🎲' }, { href: '/support', label: 'الدعم الفني' }].map((n) => (
             <Link
               key={n.href}
