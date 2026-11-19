@@ -12,8 +12,8 @@ try {
   // package declares it). Declared in scraper/package.json as the primary source.
   sharp = (await import('../../site/node_modules/sharp/lib/index.js')).default;
 }
-import { fetchPage, jar, sleepBetween, usingInjectedCookie } from './http.mjs';
-import { ensureSession } from './login.mjs';
+import { fetchPage, jar, sleepBetween } from './http.mjs';
+import { ensureSession, reauthOrThrow } from './login.mjs';
 import { parsePost } from './parse.mjs';
 import { DATA, POSTS_DIR, BASE, loadEnv, slugFromUrl, ensureDirs, isAllowedImageHost, readBodyLimited, writeJsonAtomic, writeFileAtomic, fetchAllowedImage } from './util.mjs';
 
@@ -41,23 +41,13 @@ function extractUrls(html) {
 }
 
 // When auth is delegated to an injected cookie, a redirect to wp-login means
-// the cookie is dead — forcing a login would only fail against a blocked
-// wp-login.php, so surface a message the operator can actually act on.
-async function reauthOrThrow() {
-  if (usingInjectedCookie()) {
-    throw new Error(
-      'RHYTHM_COOKIE was rejected by rhythm-sub.com (expired or invalid). ' +
-        'Refresh it: log in with "remember me" checked, copy the Cookie request ' +
-        'header, then update the RHYTHM_COOKIE GitHub secret.'
-    );
-  }
-  await ensureSession({ force: true });
-}
+// the cookie is dead — reauthOrThrow() (login.mjs) surfaces the actionable
+// "refresh RHYTHM_COOKIE" message instead of a doomed forced login.
 
 async function fetchRecentUrls() {
   const urls = new Set();
 
-  // 1. Fetch homepage & page 2
+  // 1. Fetch homepage + pages 2-3
   for (let page = 1; page <= 3; page++) {
     const target = page === 1 ? `${BASE}/` : `${BASE}/page/${page}/`;
     try {
@@ -81,7 +71,13 @@ async function fetchRecentUrls() {
     }
   }
   if (urls.size === 0) {
-    console.warn('⚠️  No post URLs discovered on any page. A 200 response with zero links usually means the upstream served a bot-challenge page to this IP — the saved cookie authenticates the WordPress session but does not satisfy a Cloudflare challenge.');
+    // Fail loudly (mirrors crawl.mjs): a 200 response with zero links usually
+    // means the upstream served a bot-challenge page to this IP. Returning an
+    // empty set would make sync log "all up to date" and exit GREEN in CI,
+    // hiding a dead pipeline.
+    throw new Error(
+      'No post URLs discovered on any page or the RSS feed. A 200 response with zero links usually means a bot-challenge page (the saved cookie authenticates WordPress but does not satisfy a Cloudflare challenge). Refusing to report a healthy no-op.'
+    );
   }
 
   // 2. Fetch RSS feed as backup
@@ -94,7 +90,11 @@ async function fetchRecentUrls() {
     if (feedXml) {
       for (const u of extractUrls(feedXml)) urls.add(u);
     }
-  } catch {}
+  } catch (e) {
+    // The feed is a backup source; a failure here is not fatal, but it must
+    // not be invisible (a silently dead feed hides upstream outages).
+    console.warn('Warning: RSS feed backup failed:', e.message);
+  }
 
   return [...urls].sort();
 }
@@ -107,9 +107,6 @@ async function downloadAndOptimizeImage(url, manifest) {
   if (manifest[url] && fs.existsSync(path.join(OUT_DIR, manifest[url].replace(/^\/img\//, '')))) {
     return manifest[url];
   }
-
-  const outFileName = crypto.createHash('sha1').update(url).digest('hex').slice(0, 16) + '.webp';
-  const outPath = path.join(OUT_DIR, outFileName);
 
   try {
     // fetchAllowedImage re-validates the host on every redirect hop and
@@ -129,6 +126,10 @@ async function downloadAndOptimizeImage(url, manifest) {
     }
 
     const webpBuf = await pipe.toBuffer();
+    // Content-addressed name (same scheme as optimize-images.mjs): changed
+    // bytes at the same URL produce a new filename, busting the immutable cache.
+    const outFileName = crypto.createHash('sha1').update(webpBuf).digest('hex').slice(0, 16) + '.webp';
+    const outPath = path.join(OUT_DIR, outFileName);
     writeFileAtomic(outPath, webpBuf);
     manifest[url] = `/img/${outFileName}`;
     console.log(`  📸 Image saved: ${url} -> ${manifest[url]}`);
@@ -180,10 +181,12 @@ export async function syncNewReleases(options = {}) {
 
   // Load existing URLs
   let existingUrls = [];
+  let inventoryReadable = true;
   try {
     existingUrls = JSON.parse(fs.readFileSync(URLS_FILE, 'utf8'));
     if (!Array.isArray(existingUrls)) throw new Error('post_urls.json is not an array');
   } catch (e) {
+    inventoryReadable = false;
     console.warn(`⚠️ Could not read ${URLS_FILE} (${e.message}); every discovered post will be treated as new.`);
   }
 
@@ -218,7 +221,9 @@ export async function syncNewReleases(options = {}) {
     console.log(`\n📥 Fetching & parsing: ${url}`);
     let { status, html, redirectedTo } = await fetchPage(url);
     if (redirectedTo && /wp-login/.test(redirectedTo)) {
-      await ensureSession({ force: true });
+      // Same rule as fetchRecentUrls: in injected-cookie mode a forced login
+      // would only fail against a blocked wp-login.php (see http.mjs).
+      await reauthOrThrow();
       ({ status, html, redirectedTo } = await fetchPage(url));
     }
 
@@ -242,9 +247,15 @@ export async function syncNewReleases(options = {}) {
     await sleepBetween(400);
   }
 
-  // Update post_urls.json
-  const updatedList = [...existingSet].sort();
-  writeJsonAtomic(URLS_FILE, updatedList);
+  // Update post_urls.json — merge-never-shrink (same policy as crawl.mjs):
+  // when the inventory was unreadable, existingSet holds ONLY the ~3 pages +
+  // feed discovered this run; writing it would silently truncate 1000+ URLs.
+  if (inventoryReadable) {
+    const updatedList = [...existingSet].sort();
+    writeJsonAtomic(URLS_FILE, updatedList);
+  } else {
+    console.warn(`⚠️ Leaving ${URLS_FILE} untouched: inventory was unreadable and this run's discovery set is partial.`);
+  }
 
   // Process & optimize new images
   if (newImages.size > 0) {

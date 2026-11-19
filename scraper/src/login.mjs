@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { BASE, UA, jar, postForm } from './http.mjs';
+import { BASE, UA, jar, postForm, usingInjectedCookie } from './http.mjs';
 import { loadEnv } from './util.mjs';
 
 export async function ensureSession({ force = false } = {}) {
@@ -36,6 +36,11 @@ export async function ensureSession({ force = false } = {}) {
   try {
     const pre = await fetch(`${BASE}/wp-login.php`, {
       headers: { 'User-Agent': UA },
+      // Manual redirects: the priming response must come from the BASE
+      // origin only. Following an off-site redirect and absorbing its
+      // Set-Cookie would be a session-fixation primitive (every other
+      // fetch path in http.mjs enforces same-site provenance).
+      redirect: 'manual',
       signal: ctrl.signal
     });
     jar.absorb(pre);
@@ -60,6 +65,21 @@ export async function ensureSession({ force = false } = {}) {
     );
   }
   return true;
+}
+
+// When auth is delegated to an injected cookie, a redirect to wp-login means
+// the cookie is dead — forcing a login would only fail against a blocked
+// wp-login.php, so surface a message the operator can actually act on.
+// Shared by sync/crawl/scrape so every re-auth path behaves identically.
+export async function reauthOrThrow() {
+  if (usingInjectedCookie()) {
+    throw new Error(
+      'RHYTHM_COOKIE was rejected by rhythm-sub.com (expired or invalid). ' +
+        'Refresh it: log in with "remember me" checked, copy the Cookie request ' +
+        'header, then update the RHYTHM_COOKIE GitHub secret.'
+    );
+  }
+  await ensureSession({ force: true });
 }
 
 // CLI direct run. Compare the resolved path (not a filename suffix): a

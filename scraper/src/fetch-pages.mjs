@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ensureSession } from './login.mjs';
 import { fetchPage } from './http.mjs';
 import { BASE, DATA, photonToOrigin } from './util.mjs';
@@ -11,9 +12,6 @@ const PAGES = [
 ];
 
 const OUT = path.join(DATA, 'pages');
-fs.mkdirSync(OUT, { recursive: true });
-
-await ensureSession();
 
 function extract(key, url, html) {
   const $ = cheerio.load(html);
@@ -33,22 +31,35 @@ function extract(key, url, html) {
   });
 
   const title = ($('h1').first().text() || $('title').first().text() || '').replace(/\s*–\s*Rhythm-Sub\s*$/, '').trim();
-
   return { key, url, title, contentHtml, images, footerHtml, socials };
 }
 
-const results = {};
-for (const p of PAGES) {
-  const { status, html } = await fetchPage(p.url);
-  if (status !== 200 || !html) {
-    console.error(`FAIL ${p.key}: HTTP ${status}`);
-    process.exit(1);
+async function main() {
+  fs.mkdirSync(OUT, { recursive: true });
+  await ensureSession();
+
+  const results = {};
+  for (const p of PAGES) {
+    const { status, html } = await fetchPage(p.url);
+    if (status !== 200 || !html) {
+      console.error(`FAIL ${p.key}: HTTP ${status}`);
+      process.exit(1);
+    }
+    const data = extract(p.key, p.url, html);
+    results[p.key] = data;
+    fs.writeFileSync(path.join(OUT, `${p.key}.json`), JSON.stringify(data, null, 2));
+    console.log(`ok ${p.key}: "${data.title}" | html:${data.contentHtml.length}ch | imgs:${data.images.length} | socials:${data.socials.length}`);
   }
-  const data = extract(p.key, p.url, html);
-  results[p.key] = data;
-  fs.writeFileSync(path.join(OUT, `${p.key}.json`), JSON.stringify(data, null, 2));
-  console.log(`ok ${p.key}: "${data.title}" | html:${data.contentHtml.length}ch | imgs:${data.images.length} | socials:${data.socials.length}`);
+
+  fs.writeFileSync(path.join(OUT, '_footer.json'), JSON.stringify({ footerHtml: results.about.footerHtml, socials: results.about.socials }, null, 2));
+  console.log('footer saved');
 }
 
-fs.writeFileSync(path.join(OUT, '_footer.json'), JSON.stringify({ footerHtml: results.about.footerHtml, socials: results.about.socials }, null, 2));
-console.log('footer saved');
+// CLI direct run — importing this module must not log in and fetch as a side
+// effect (same guarded-entry convention as login.mjs / sync.mjs).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

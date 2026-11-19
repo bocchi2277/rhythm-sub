@@ -7,9 +7,11 @@ on:
   workflow_dispatch: # Allows manual trigger from GitHub Actions UI
 
 # Never let a scheduled run and a manual run overlap: both push to main and
-# force-push the sync-data snapshot branch.
+# force-push the sync-data snapshot branch. The group is deliberately NOT
+# keyed on github.ref — a dispatch on a non-main branch would otherwise get
+# its own group and race the schedule (force-with-lease was the only backstop).
 concurrency:
-  group: auto-sync-${{ github.ref }}
+  group: auto-sync
   cancel-in-progress: false
 
 permissions:
@@ -24,7 +26,9 @@ jobs:
     # `npm ci`, which runs dependency install scripts. A compromised
     # transitive dependency could then exfiltrate RHYTHM_COOKIE (a live
     # WordPress session) and RHYTHM_SESSION_KEY (the key that decrypts the
-    # cached session). Each secret is scoped to the steps that use it.
+    # cached session). Each secret is scoped to the steps that use it, and
+    # the session is only decrypted AFTER npm ci so install scripts never
+    # see the plaintext .session.json either.
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -36,13 +40,20 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: scraper/package-lock.json
+          cache-dependency-path: |
+            scraper/package-lock.json
+            site/package-lock.json
 
       # Reuse login cookies across runs: fresh logins from datacenter IPs
       # are often challenged by Cloudflare, while a saved session just works.
       # Only the ENCRYPTED session is cached (scraper/.session.enc); the
       # plaintext .session.json never leaves the runner. A per-run key lets
       # every run save refreshed cookies; restore-keys picks the newest one.
+      # NOTE: on a public repo any fork PR can READ cache entries (GitHub
+      # docs, Dependency caching). The blob is therefore AEAD-encrypted
+      # (AES-256-GCM, PBKDF2 600000) with a key that never leaves secrets —
+      # a stolen blob is only an offline brute-force target, and tampering
+      # is detected at decrypt time.
       - name: Restore encrypted session cache
         # Deliberately no `if: secrets.X` — the secrets context is NOT available
         # in step conditions (GitHub docs), so that form silently never runs.
@@ -53,28 +64,6 @@ jobs:
           path: scraper/.session.enc
           key: rhythm-session-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: rhythm-session-
-
-      - name: Decrypt session
-        env:
-          RHYTHM_SESSION_KEY: ${{ secrets.RHYTHM_SESSION_KEY }}
-        run: |
-          if [ -z "$RHYTHM_SESSION_KEY" ]; then
-            echo "No RHYTHM_SESSION_KEY; dropping any restored cache and logging in fresh."
-            rm -f scraper/.session.enc scraper/.session.json
-            exit 0
-          fi
-          if [ ! -f scraper/.session.enc ]; then
-            echo "No cached session; sync will log in fresh."
-            exit 0
-          fi
-          # -pass env: keeps the key out of argv and logs.
-          if openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -d -pass env:RHYTHM_SESSION_KEY \
-              -in scraper/.session.enc -out scraper/.session.json; then
-            echo "Cached session decrypted."
-          else
-            echo "::warning::Session decrypt failed (corrupt cache or rotated key); removing it and continuing with a fresh login."
-            rm -f scraper/.session.enc scraper/.session.json
-          fi
 
       # data/posts/ is gitignored but is REQUIRED input for build-model.mjs.
       # The full snapshot lives on the `sync-data` branch (seeded locally);
@@ -111,6 +100,14 @@ jobs:
             echo "::error::posts.tar.gz contains symlink/hardlink entries; refusing to extract."
             exit 1
           fi
+          # Scope, not just safety: extraction runs with -C data, and sync.mjs
+          # commits data/pages + data/releases to main. A member like
+          # releases/evil.json is path-safe but would be planted straight into
+          # the published site. Only posts/ members are legitimate.
+          if grep -qvE '^posts(/|$)' /tmp/posts-names.txt; then
+            echo "::error::posts.tar.gz contains members outside posts/; refusing to extract."
+            exit 1
+          fi
           mkdir -p data/posts
           tar -xzf /tmp/posts.tar.gz -C data
           RESTORED=$(find data/posts -name '*.json' | wc -l)
@@ -134,6 +131,36 @@ jobs:
 
       - name: Syntax check scraper
         run: node scraper/src/syntax-check.mjs
+
+      # AFTER npm ci on purpose: a compromised install script must never find
+      # a plaintext .session.json in the workspace (the job's threat model).
+      - name: Decrypt session
+        env:
+          RHYTHM_SESSION_KEY: ${{ secrets.RHYTHM_SESSION_KEY }}
+        run: |
+          if [ -z "$RHYTHM_SESSION_KEY" ]; then
+            echo "No RHYTHM_SESSION_KEY; dropping any restored cache and logging in fresh."
+            rm -f scraper/.session.enc scraper/.session.json
+            exit 0
+          fi
+          if [ ! -f scraper/.session.enc ]; then
+            echo "No cached session; sync will log in fresh."
+            exit 0
+          fi
+          # Current format: AES-256-GCM (authenticated) via node:crypto.
+          if node scraper/src/session-crypto.mjs decrypt; then
+            echo "Cached session decrypted."
+          # Legacy format: openssl AES-256-CBC (unauthenticated) — read-only
+          # migration path for caches sealed before the GCM switch; the
+          # encrypt step below re-seals as GCM. -pass env: keeps the key out
+          # of argv and logs.
+          elif openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -d -pass env:RHYTHM_SESSION_KEY \
+              -in scraper/.session.enc -out scraper/.session.json; then
+            echo "::warning::Legacy CBC session cache decrypted; it will be re-encrypted as AES-256-GCM."
+          else
+            echo "::warning::Session decrypt failed (corrupt cache or rotated key); removing it and continuing with a fresh login."
+            rm -f scraper/.session.enc scraper/.session.json
+          fi
 
       - name: Check & Sync New Releases (commit only)
         id: sync_step
@@ -172,13 +199,11 @@ jobs:
             exit 0
           fi
           if [ -f scraper/.session.json ]; then
-            # -iter 600000: `openssl enc -pbkdf2` defaults to only 10 000
-            # iterations, far below the current OWASP floor for PBKDF2-HMAC-
-            # SHA256. NOTE: CBC is unauthenticated — see HANDOVER.md for the
-            # recommended switch to an AEAD scheme.
-            openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:RHYTHM_SESSION_KEY \
-              -in scraper/.session.json -out scraper/.session.enc
-            echo "Session encrypted for the cache save."
+            # AES-256-GCM (AEAD) + PBKDF2-HMAC-SHA256 600000 iterations, via
+            # node:crypto. Replaces openssl AES-256-CBC, which was
+            # unauthenticated (malleable by any main-scoped cache writer).
+            # The key is read from the environment, never argv.
+            node scraper/src/session-crypto.mjs encrypt
           else
             echo "No session file to encrypt."
           fi
@@ -195,14 +220,34 @@ jobs:
           path: scraper/.session.enc
           key: rhythm-session-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # Gate the push on a real site build: auto-sync publishes scraped data
+      # straight to production and ci.yml only runs AFTER the push, so a data
+      # commit that breaks the build would otherwise reach Cloudflare first.
+      # Runs ONLY when new data was committed — idle runs pay nothing.
+      - name: Build site gate (only when data changed)
+        if: steps.sync_step.outcome == 'success'
+        run: |
+          if [ "$(git rev-parse HEAD)" = "$HEAD_BEFORE" ]; then
+            echo "No new data committed; skipping the site build gate."
+            exit 0
+          fi
+          cd site
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm run build
+          python3 scripts/check-css-coverage.py
+          npm run check:assets
+
       # The snapshot is the ONLY backup of the gitignored data/posts. Publish
       # it to sync-data and verify the remote ref BEFORE pushing main, so a
       # snapshot failure can never leave the published model ahead of its raw
       # backup. When sync committed nothing, both pushes are skipped.
       # The condition depends on the sync step alone: an unrelated failure
-      # (e.g. the session encryption) must not strand a good commit.
+      # (e.g. the session encryption) must not strand a good commit. A failed
+      # build gate above MUST block the push (explicit success()).
       - name: Publish snapshot, then push main
-        if: steps.sync_step.outcome == 'success'
+        if: success() && steps.sync_step.outcome == 'success'
         run: |
           if [ "$(git rev-parse HEAD)" = "$HEAD_BEFORE" ]; then
             echo "No new data committed; skipping snapshot and main pushes."

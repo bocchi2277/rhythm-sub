@@ -35,6 +35,9 @@ test('safeRel strips dot segments and separators after decoding', () => {
   // parsing and must be stripped after decoding.
   assert.equal(safeRel(new URL('https://x.com/a/%2e%2e%2fb.jpg')), 'a/b.jpg');
   assert.equal(safeRel(new URL('https://x.com/')), '');
+  // Malformed percent-encoding (a stray '%' in an upstream filename) must
+  // not throw URIError and kill a whole bulk run — fall back to the raw path.
+  assert.equal(safeRel(new URL('https://x.com/a/100%.jpg')), 'a/100%.jpg');
 });
 
 test('safeJoin refuses paths escaping the base dir', () => {

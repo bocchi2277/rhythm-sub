@@ -35,12 +35,20 @@ if (!fs.existsSync(OUT)) {
 // Hosts the site legitimately loads subresources from.
 const ALLOWED_HOSTS = new Set(['www.youtube-nocookie.com', 'www.youtube.com']);
 
+// Subresource URL prefixes that load from another origin: absolute http(s),
+// protocol-relative //host, and /\host (WHATWG URL parsing treats '\' as '/'
+// in special schemes, so /\evil.com resolves to https://evil.com).
+const REMOTE = '(?:https?:\\/\\/|\\/\\/|\\/\\\\)';
 // <img|script|iframe|video|audio|source|embed|input src="...">, poster="..."
-const SRCSRC = /<(?:img|script|iframe|video|audio|source|embed|input|track)\b[^>]*?\bsrc\s*=\s*"(https?:\/\/[^"]+)"/gi;
-const POSTER = /<(?:video|body)\b[^>]*?\bposter\s*=\s*"(https?:\/\/[^"]+)"/gi;
+const SRCSRC = new RegExp(`<(?:img|script|iframe|video|audio|source|embed|input|track)\\b[^>]*?\\bsrc\\s*=\\s*"(${REMOTE}[^"]+)"`, 'gi');
+const POSTER = new RegExp(`<(?:video|body)\\b[^>]*?\\bposter\\s*=\\s*"(${REMOTE}[^"]+)"`, 'gi');
 const SRCSET = /\bsrcset\s*=\s*"([^"]+)"/gi;
 // <link href="..."> — stylesheets and preloads are subresources too.
-const LINK = /<link\b[^>]*?\bhref\s*=\s*"(https?:\/\/[^"]+)"/gi;
+const LINK = new RegExp(`<link\\b[^>]*?\\bhref\\s*=\\s*"(${REMOTE}[^"]+)"`, 'gi');
+// CSS url(...) in style attributes AND inlined <style> blocks (inline-css.mjs
+// injects the stylesheet into every page). data: URLs (the inline placeholder)
+// do not match the remote prefixes and stay allowed.
+const CSS_URL = new RegExp(`url\\(\\s*['"]?(${REMOTE}[^)'"]*)`, 'gi');
 
 const files = collectHtml(OUT);
 const offenders = [];
@@ -48,7 +56,8 @@ const offenders = [];
 const record = (file, url) => {
   let host;
   try {
-    host = new URL(url).hostname.toLowerCase();
+    // Base resolves protocol-relative values (//evil.com, /\evil.com).
+    host = new URL(url, 'https://relative.invalid/').hostname.toLowerCase();
   } catch {
     return;
   }
@@ -61,10 +70,11 @@ for (const file of files) {
   for (const m of html.matchAll(SRCSRC)) record(file, m[1]);
   for (const m of html.matchAll(POSTER)) record(file, m[1]);
   for (const m of html.matchAll(LINK)) record(file, m[1]);
+  for (const m of html.matchAll(CSS_URL)) record(file, m[1]);
   for (const m of html.matchAll(SRCSET)) {
     for (const candidate of m[1].split(',')) {
       const url = candidate.trim().split(/\s+/)[0];
-      if (/^https?:\/\//i.test(url)) record(file, url);
+      if (/^(?:https?:\/\/|\/\/|\/\\)/i.test(url)) record(file, url);
     }
   }
 }

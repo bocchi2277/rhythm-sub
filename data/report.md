@@ -1,8 +1,8 @@
 # Rhythm-Sub scrape & model report
-Generated: 2026-11-09T17:48:13.413Z
+Generated: 2026-11-19T10:35:52.139Z
 
 ## Totals
-- Source posts scraped: **1027 / 1027** (0 failures)
+- Source posts loaded: **1027 / 1027** (unusable files fail the build)
 - Series entities: **425**
 - Episode/release entries: **1027**
 - Series with >1 release: 122

@@ -39,10 +39,9 @@ export function img(url?: string | null): string {
   if (local) return local;
   // Only allow local site assets through; reject protocol-relative
   // (//evil.com/x) and any absolute URL to avoid referrer/tracker leaks.
-  // Off-allowlist hosts (e.g. 28 i.imgur.com URLs) intentionally fall back
-  // to the placeholder instead of hotlinking — isAllowedImageHost() in
-  // scraper/src/util.mjs gates the same list at download time.
-  if (url.startsWith('/') && !url.startsWith('//')) return url;
+  // A backslash in position 2 (/\evil.com/x) is protocol-relative too:
+  // WHATWG URL parsing treats '\' as '/' in special schemes.
+  if (url.startsWith('/') && !url.startsWith('//') && url[1] !== '\\') return url;
   return '/placeholder.svg';
 }
 
@@ -67,8 +66,9 @@ export function mapScrapedImageSrc(src: string | null | undefined): string {
   if (!src) return '/placeholder.svg';
   const trimmed = src.trim();
   if (!trimmed) return '/placeholder.svg';
-  // Already a local site asset — keep it.
-  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+  // Already a local site asset — keep it. Reject // and /\ (WHATWG URL
+  // parsing treats a backslash as a slash in special schemes).
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//') && trimmed[1] !== '\\') return trimmed;
   const normalized = normalizeUpstreamImageUrl(trimmed);
   if (normalized.startsWith('https://rhythm-sub.com/')) return img(normalized);
   // Anything else is a third-party host: do not load it.

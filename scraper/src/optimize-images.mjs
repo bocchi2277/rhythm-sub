@@ -33,8 +33,10 @@ if (fs.existsSync(pagesDir)) {
 }
 
 let manifest = {};
+let manifestLoaded = false;
 try {
   manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+  manifestLoaded = true;
 } catch {}
 
 function srcPath(url) {
@@ -45,15 +47,23 @@ function srcPath(url) {
   return safeJoin(IMG_DIR, rel);
 }
 
-function outName(url) {
-  return crypto.createHash('sha1').update(url).digest('hex').slice(0, 16) + '.webp';
+function outName(buf) {
+  // Content-addressed: the name derives from the OPTIMIZED BYTES, not the
+  // source URL. An upstream image changed at the same URL produces a new
+  // filename, so the immutable /img/* cache can never pin stale bytes.
+  return crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '.webp';
 }
 
+// --force re-optimizes everything (migration / upstream content changes);
+// the default run skips URLs whose manifest entry already exists on disk.
+const FORCE = process.argv.includes('--force');
 // Manifest values are site-rooted (/img/<hash>.webp) while OUT_DIR already
 // ends in img — strip the prefix before joining, or the existence check looks
 // in img/img/ and every image is re-optimized on every run.
-const queue = [...urls].filter((u) => !manifest[u] || !fs.existsSync(path.join(OUT_DIR, manifest[u].replace(/^\/img\//, ''))));
-console.log(`total ${urls.size} | optimized ${urls.size - queue.length} | todo ${queue.length}`);
+const queue = FORCE
+  ? [...urls]
+  : [...urls].filter((u) => !manifest[u] || !fs.existsSync(path.join(OUT_DIR, manifest[u].replace(/^\/img\//, ''))));
+console.log(`total ${urls.size} | optimized ${urls.size - queue.length} | todo ${queue.length}${FORCE ? ' (FORCE)' : ''}`);
 
 let done = 0;
 let failed = [];
@@ -71,10 +81,11 @@ async function optimize(url) {
     if ((meta.width ?? 0) > 1400 && !isCover) pipe = sharp(src, { failOn: 'none' }).rotate().resize({ width: 1280, withoutEnlargement: true }).webp({ quality: 78, effort: 3 });
     else if ((meta.width ?? 0) > 900) pipe = sharp(src, { failOn: 'none' }).rotate().resize({ width: 900, withoutEnlargement: true }).webp({ quality: 78, effort: 3 });
     const buf = await pipe.toBuffer();
-    writeFileAtomic(path.join(OUT_DIR, outName(url)), buf);
+    const name = outName(buf);
+    writeFileAtomic(path.join(OUT_DIR, name), buf);
     bytesIn += fs.statSync(src).size;
     bytesOut += buf.length;
-    manifest[url] = `/img/${outName(url)}`;
+    manifest[url] = `/img/${name}`;
   } catch (e) {
     failed.push({ url, error: String(e.message ?? e) });
   }
@@ -92,4 +103,21 @@ await Promise.all(Array.from({ length: CONCURRENCY }, () => worker(q)));
 
 writeJsonAtomic(MANIFEST, manifest);
 writeJsonAtomic(path.join(DATA, 'optimize_failures.json'), failed);
+
+// Orphan cleanup: with content-addressed names, a re-optimized image leaves
+// its old file behind. Delete unreferenced .webp files so public/img stays
+// exactly the manifest's image set. Failed URLs keep their old manifest
+// entry (and thus their old file) — only truly unreferenced files go. Skipped
+// entirely when the manifest could not be loaded (no source of truth).
+if (manifestLoaded) {
+  const referenced = new Set(Object.values(manifest).map((p) => p.replace(/^\/img\//, '')));
+  let removed = 0;
+  for (const f of fs.readdirSync(OUT_DIR)) {
+    if (f.endsWith('.webp') && !referenced.has(f)) {
+      fs.rmSync(path.join(OUT_DIR, f));
+      removed++;
+    }
+  }
+  console.log(`orphans removed: ${removed}`);
+}
 console.log(`DONE ok=${done - failed.length} failed=${failed.length} | ${(bytesIn / 1048576).toFixed(0)}MB -> ${(bytesOut / 1048576).toFixed(0)}MB`);

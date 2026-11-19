@@ -63,41 +63,7 @@ export function workTitle(t: string): string {
     .trim();
 }
 
-/**
- * Normalize a scraped synopsis: strip the "قصة الأنمي:" prefix, drop
- * greeting/announcement paragraphs and pure metadata blocks, and reject
- * chatter that is not an actual plot summary.
- */
-export function safeSynopsis(s: string | null | undefined): string {
-  if (!s) return '';
-  let t = String(s)
-    .replace(/^قصة\s*الأنمي\s*[:：]?\s*/i, '')
-    .replace(/^ملخص\s*[^\n]{0,80}[:：]\s*/i, '')
-    .trim();
-
-  // Strip leading greetings/announcements/lines if followed by actual synopsis paragraphs
-  t = t
-    .replace(
-      /^(?:#فضفضة[^\n]*\n+|السلام\s*عليكم[^\n]*\n+|مرحبا[^\n]*\n+|أهلًا\s*بالجميع[^\n]*\n+|تادا[^\n]*\n+|مبارك\s*عليكم[^\n]*\n+|نقد[مك]\s*لكم[^\n]*\n+|نقدم\s*لكم[^\n]*\n+|يسرنا[^\n]*\n+|يُ?سعدني[^\n]*\n+|يسعدنا[^\n]*\n+|نعود\s*لكم[^\n]*\n+|رجعنا\s*لكم[^\n]*\n+|ه?آي\s*مينا[^\n]*\n+|الموسم\s*[^\n]*\n+|Anime Info[^\n]*\n+)+/i,
-      ''
-    )
-    .trim();
-
-  // If text is pure metadata or staff lines
-  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات|Anime Info|TL|TLC|QC|TS|Encode)\s*:/i.test(t)) return '';
-  if (/Anime Info\s*:\s*MAL/i.test(t)) return '';
-
-  // Chatter & release-announcement starters
-  const CHATTER_RE =
-    /^(?:نقد[مك]\s*لكم|يسرنا|يُ?سعدني|يسعدنا|نعود\s*لكم|رجعنا\s*لكم|ه?آي\s*مينا|وأخيرًا\s*خلصنا|خلصنا\s*صيانة|السلام\s*عليكم|مرحبا|أهلًا\s*بالجميع|تادا|مبارك\s*عليكم|إصدار\s*بديل|حلقت[اي]ن?\s*(?:أوفا|خاصة)|حلقة\s*خاصة|الحلقة\s*(?:الـ?\d+|الأخيرة|الثالثة|الصفرية)|نصل\s*(?:ل?ختام|إلى\s*الحلقة|إلى\s*نهاية)|وها\s*نحن\s*نختتم|ننهي\s*رحلتنا|انتهيت\s*أخيرًا|يوه\s*شيء|وذهب\s*شهر|يا\s*لعزة\s*هذا\s*الشهر|الفولي?وم\s*(?:الأول|الثاني|الثالث|الرابع|الخامس|الأخير)|وإلى\s*هنا\s*نصل|هناك\s*بعد\s*التعديلات|ونفجر\s*بيها|أكيد\s*عارفنه|#فضفضة|مشروع\s*مصغر|هذه\s*الأوفا|حلقات\s*خاصة|أوفا\s*تكمل|بفضل\s*الله\s*ثم|معلومة\s*عن\s*العمل|بعد\s*مضي\s*أكثر\s*من\s*10\s*أعوام)/i;
-
-  if (
-    CHATTER_RE.test(t) &&
-    (t.length < 250 || !/تدور\s*احداث|تدور\s*القصة|يحكي|تبدأ|تتحدث|طالب\s*ثانوية|فتاة|شاب|عالم|مدينة|يعيش/i.test(t))
-  ) {
-    return '';
-  }
-
-  if (t.length < 25) return '';
-  return t;
-}
+// Synopsis cleaning + staff cleaning are the shared boundary contract
+// (shared/rules.mjs) — the scraper imports the SAME implementation, so the
+// two can no longer drift. safeSynopsis is the historical site-side name.
+export { cleanSynopsis as safeSynopsis, cleanStaffRecord } from '../../shared/rules.mjs';

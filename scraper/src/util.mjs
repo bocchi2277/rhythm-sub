@@ -88,12 +88,14 @@ export function photonToOrigin(u) {
 
 // Write via a temp file in the same directory, then rename over the target.
 // A crash mid-write can then never leave a truncated JSON/model file behind.
-export function writeFileAtomic(file, content) {
+export function writeFileAtomic(file, content, { mode } = {}) {
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = path.join(dir, `.${path.basename(file)}.${crypto.randomUUID()}.tmp`);
   try {
-    fs.writeFileSync(tmp, content);
+    // Create with the final mode so sensitive files (session cookies) are
+    // never briefly world-readable before a post-rename chmod.
+    fs.writeFileSync(tmp, content, mode != null ? { mode } : undefined);
     fs.renameSync(tmp, file);
   } finally {
     // No-op after a successful rename; removes the temp file if writing or
@@ -104,8 +106,8 @@ export function writeFileAtomic(file, content) {
   }
 }
 
-export function writeJsonAtomic(file, value, space = 2) {
-  writeFileAtomic(file, JSON.stringify(value, null, space));
+export function writeJsonAtomic(file, value, space = 2, mode) {
+  writeFileAtomic(file, JSON.stringify(value, null, space), mode != null ? { mode } : {});
 }
 
 // SSRF guard: only fetch from the known upstream hosts. A substring check
@@ -166,7 +168,16 @@ export async function fetchAllowedImage(url, { referer, ua = UA, timeoutMs = 600
 // so `%2e%2e%2f` / `%5c` survive and path.join would walk out of the base dir.
 // Strip dot segments and separators, then verify containment with safeJoin.
 export function safeRel(u) {
-  const decoded = decodeURIComponent(u.pathname).replace(/^\//, '').replace(/[:*?"<>|\\]/g, '_');
+  // Malformed percent-encoding (a stray '%' in an upstream filename) must not
+  // throw URIError and kill a whole bulk run — fall back to the raw pathname
+  // and let the sanitizer below strip anything unsafe.
+  let raw;
+  try {
+    raw = decodeURIComponent(u.pathname);
+  } catch {
+    raw = u.pathname;
+  }
+  const decoded = raw.replace(/^\//, '').replace(/[:*?"<>|\\]/g, '_');
   return decoded.split('/').filter((s) => s && s !== '.' && s !== '..').join('/');
 }
 

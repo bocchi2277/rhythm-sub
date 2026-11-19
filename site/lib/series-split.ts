@@ -100,7 +100,6 @@ export function splitForeignWorks(seriesList: Series[]): Series[] {
       knownSlugs.add(slug);
       synthetics.push({
         key: `${s.key}:x:${slug}`,
-        malUrl: null,
         slug,
         title: base,
         altTitles: null,

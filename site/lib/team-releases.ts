@@ -81,10 +81,18 @@ export function applyTeamReleases(
 
   for (const [idx, { file, value: r }] of teamReleases.entries()) {
     const rawSlug = String(r.seriesSlug ?? '').trim();
+    // seriesSlug becomes a route and an episode-slug prefix — hold it to the
+    // same charset as scraper-produced slugs, loudly like every other field.
+    if (rawSlug && !/^[a-z0-9][a-z0-9-]*$/.test(rawSlug)) {
+      throw new Error(`data/releases/${file}: seriesSlug must be lowercase ASCII letters/digits/hyphens (got ${JSON.stringify(rawSlug)})`);
+    }
     // Arabic-only titles slugify to '' — skip instead of silently dropping
     // via a Date.now() fallback that collides on every render.
     const slug = rawSlug || slugifySeries(String(r.seriesTitle ?? ''));
     if (!slug) continue;
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+      throw new Error(`data/releases/${file}: derived slug ${JSON.stringify(slug)} is not a valid route slug`);
+    }
 
     const label = typeof r.label === 'string' ? r.label.trim() : '';
     if (!label) throw new Error(`data/releases/${file}: label is required`);
@@ -98,7 +106,6 @@ export function applyTeamReleases(
       const y = r.date ? Number(String(r.date).slice(0, 4)) : NaN;
       s = {
         key: `team:${slug}`,
-        malUrl: null,
         slug,
         title: String(r.seriesTitle ?? slug),
         altTitles: null,
@@ -130,19 +137,13 @@ export function applyTeamReleases(
 
     s.episodes.push({
       slug: `${slug}-${epNum ?? `team-${idx}`}`,
-      url: `/anime/${slug}/`,
       number: epNum,
       displayNum: epNum != null ? String(epNum) : null,
       label,
       date: isoDate,
-      rating: null,
       cover: typeof r.coverUrl === 'string' && r.coverUrl.startsWith('/img/') ? r.coverUrl : null,
-      synopsis: String(r.synopsis ?? ''),
-      trailerYoutubeId: null,
       qualities: normalizeTeamQualities(r.qualities, file),
-      contentImages: [],
-      postId: null,
-      author: 'team'
+      contentImages: []
     });
 
     if (r.staff != null) {

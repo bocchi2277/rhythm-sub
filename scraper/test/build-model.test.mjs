@@ -5,7 +5,8 @@ import {
   asciiSlug,
   episodeNumberFrom,
   extractEpisodeMetadata,
-  groupPosts
+  groupPosts,
+  isValidPost
 } from '../src/build-model.mjs';
 
 test('normalizeSlug strips episode/number suffixes', () => {
@@ -89,4 +90,18 @@ test('groupPosts is deterministic regardless of input order', () => {
   assert.deepEqual([...forward.keys()], [...backward.keys()]);
   assert.equal(forward.get('mal:5').length, 3);
   assert.equal(backward.get('mal:5').length, 3);
+});
+
+test('isValidPost rejects structurally wrong posts', () => {
+  // Regression: the CI snapshot guard only JSON.parse-es each post file, so a
+  // valid-JSON post missing `downloads` used to crash build-model later as a
+  // bare TypeError on p.downloads.flatMap instead of naming the file.
+  assert.equal(isValidPost({ slug: 'x', title: 'X', downloads: [] }), true);
+  assert.equal(isValidPost({ slug: 'x', title: 'X' }), false);
+  assert.equal(isValidPost({ slug: 'x', downloads: [] }), false);
+  assert.equal(isValidPost({ title: 'X', downloads: [] }), false);
+  assert.equal(isValidPost({ slug: 1, title: 'X', downloads: [] }), false);
+  assert.equal(isValidPost({ slug: 'x', title: 'X', downloads: {} }), false);
+  assert.equal(isValidPost(null), false);
+  assert.equal(isValidPost([]), false);
 });

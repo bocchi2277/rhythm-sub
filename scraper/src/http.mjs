@@ -54,7 +54,7 @@ export const jar = {
     return [...this.map.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
   },
   save() {
-    writeJsonAtomic(SESSION_FILE, Object.fromEntries(this.map));
+    writeJsonAtomic(SESSION_FILE, Object.fromEntries(this.map), 2, 0o600);
     // Best-effort: session cookies are sensitive. Restrictive perms help on POSIX;
     // on Windows this may be a no-op depending on filesystem/ACL semantics.
     try {

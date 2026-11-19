@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { ensureSession } from './login.mjs';
+import { ensureSession, reauthOrThrow } from './login.mjs';
 import { fetchPage, sleepBetween } from './http.mjs';
 import { parsePost } from './parse.mjs';
 import { DATA, POSTS_DIR, loadEnv, slugFromUrl, ensureDirs, writeJsonAtomic } from './util.mjs';
@@ -39,7 +39,7 @@ async function main() {
 
       if (redirectedTo && /wp-login/.test(redirectedTo)) {
         console.log('session expired, re-login...');
-        await ensureSession({ force: true });
+        await reauthOrThrow();
         ({ status, html, redirectedTo } = await fetchPage(url));
       }
 

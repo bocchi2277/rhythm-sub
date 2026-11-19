@@ -2,28 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DATA, POSTS_DIR, writeFileAtomic, writeJsonAtomic } from './util.mjs';
+import {
+  asciiSlug,
+  normalizeSlug,
+  getFranchiseKey,
+  cleanSynopsis,
+  compareEpisodesDesc,
+  cleanStaffRecord
+} from '../../shared/rules.mjs';
 
-export function normalizeSlug(slug) {
-  return slug
-    .replace(/-(?:episode|ep)-?\d{1,4}$/i, '')
-    .replace(/-\d{1,4}$/, '')
-    .replace(/-\d{1,4}(?:-\d{1,2})?$/, '');
-}
-
-export function asciiSlug(raw) {
-  let s = raw;
-  try {
-    s = decodeURIComponent(raw);
-  } catch {}
-  s = s
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-  return s || 'anime';
-}
+// The boundary rules now live in ONE place (shared/rules.mjs), imported by
+// both the scraper and the site. Re-exported here because existing consumers
+// and the parity tests import them from build-model.
+export { asciiSlug, normalizeSlug, getFranchiseKey, cleanSynopsis, compareEpisodesDesc, cleanStaffRecord };
 
 export function episodeNumberFrom(post) {
   const m1 = post.slug.match(/(?:^|-)(?:episode|ep)-?(\d{1,4})$/i);
@@ -109,33 +100,8 @@ function pickLatest(posts, getter) {
   return null;
 }
 
-export function cleanSynopsis(s) {
-  if (!s) return '';
-  let t = String(s)
-    .replace(/^قصة\s*الأنمي\s*[:：]?\s*/i, '')
-    .replace(/^ملخص\s*[^\n]{0,80}[:：]\s*/i, '')
-    .trim();
-
-  // Strip leading greetings/announcements/lines if followed by actual synopsis paragraphs
-  t = t.replace(/^(?:#فضفضة[^\n]*\n+|السلام\s*عليكم[^\n]*\n+|مرحبا[^\n]*\n+|أهلًا\s*بالجميع[^\n]*\n+|تادا[^\n]*\n+|مبارك\s*عليكم[^\n]*\n+|نقد[مك]\s*لكم[^\n]*\n+|نقدم\s*لكم[^\n]*\n+|يسرنا[^\n]*\n+|يُ?سعدني[^\n]*\n+|يسعدنا[^\n]*\n+|نعود\s*لكم[^\n]*\n+|رجعنا\s*لكم[^\n]*\n+|ه?آي\s*مينا[^\n]*\n+|الموسم\s*[^\n]*\n+|Anime Info[^\n]*\n+)+/i, '').trim();
-
-  // If text is pure metadata or staff lines
-  if (/^(التصنيف|الحالة|استوديو|سنة الإصدار|الموسم|النوع|الحلقات|Anime Info|TL|TLC|QC|TS|Encode)\s*:/i.test(t)) return '';
-  if (/Anime Info\s*:\s*MAL/i.test(t)) return '';
-
-  // Chatter & release-announcement starters
-  const CHATTER_RE = /^(?:نقد[مك]\s*لكم|يسرنا|يُ?سعدني|يسعدنا|نعود\s*لكم|رجعنا\s*لكم|ه?آي\s*مينا|وأخيرًا\s*خلصنا|خلصنا\s*صيانة|السلام\s*عليكم|مرحبا|أهلًا\s*بالجميع|تادا|مبارك\s*عليكم|إصدار\s*بديل|حلقت[اي]ن?\s*(?:أوفا|خاصة)|حلقة\s*خاصة|الحلقة\s*(?:الـ?\d+|الأخيرة|الثالثة|الصفرية)|نصل\s*(?:ل?ختام|إلى\s*الحلقة|إلى\s*نهاية)|وها\s*نحن\s*نختتم|ننهي\s*رحلتنا|انتهيت\s*أخيرًا|يوه\s*شيء|وذهب\s*شهر|يا\s*لعزة\s*هذا\s*الشهر|الفولي?وم\s*(?:الأول|الثاني|الثالث|الرابع|الخامس|الأخير)|وإلى\s*هنا\s*نصل|هناك\s*بعد\s*التعديلات|ونفجر\s*بيها|أكيد\s*عارفنه|#فضفضة|مشروع\s*مصغر|هذه\s*الأوفا|حلقات\s*خاصة|أوفا\s*تكمل|بفضل\s*الله\s*ثم|معلومة\s*عن\s*العمل|بعد\s*مضي\s*أكثر\s*من\s*10\s*أعوام)/i;
-
-  if (CHATTER_RE.test(t) && (t.length < 250 || !/تدور\s*احداث|تدور\s*القصة|يحكي|تبدأ|تتحدث|طالب\s*ثانوية|فتاة|شاب|عالم|مدينة|يعيش/i.test(t))) {
-    return '';
-  }
-
-  if (t.length < 25) return '';
-  return t;
-}
-
-const INVALID_ROLE_RE = /^(https?|ftp|www|anime\s*info|http)$/i;
-const GENERIC_PREFIXES = new Set(['yuusha', 'princess', 'isekai', 'mahou', 'shin', 'super', 'strike', 'kono', 'seishun', 'ore', 'watashi', 'boku', 'toaru', 'gekijouban']);
+// Per-record staff cleaning and episode ordering now live in shared/rules.mjs
+// (imported + re-exported at the top of this file).
 
 // Declared once at module scope (previously re-created inside the per-series
 // loop).
@@ -155,18 +121,6 @@ function areDistinctlyRelated(titleA, titleB) {
   const wordsA = (titleA || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
   const wordsB = (titleB || '').toLowerCase().split(/\W+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
   return wordsA.some((w) => wordsB.includes(w));
-}
-
-function getFranchiseKey(slug) {
-  const parts = slug.split('-').filter(Boolean);
-  if (parts.length >= 2) {
-    const two = parts.slice(0, 2).join('-');
-    if (!GENERIC_PREFIXES.has(parts[0]) || parts.length >= 3) {
-      if (GENERIC_PREFIXES.has(parts[0])) return parts.slice(0, 3).join('-');
-      return two;
-    }
-  }
-  return null;
 }
 
 // Group posts into series. Pure and exported for regression tests.
@@ -209,13 +163,34 @@ export function groupPosts(posts) {
   return groups;
 }
 
+// Shape guard for a parsed post file. The CI snapshot check only JSON.parse-es
+// each file, so a structurally wrong post (valid JSON, missing downloads) must
+// be rejected HERE with its filename, not crash later as a bare TypeError on
+// p.downloads.flatMap. Pure + exported for regression tests.
+export function isValidPost(p) {
+  return Boolean(
+    p && typeof p === 'object' &&
+    typeof p.slug === 'string' &&
+    typeof p.title === 'string' &&
+    Array.isArray(p.downloads)
+  );
+}
+
 function main() {
   const files = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.json'));
   const posts = [];
   const bad = [];
   for (const f of files) {
     try {
-      posts.push(JSON.parse(fs.readFileSync(path.join(POSTS_DIR, f), 'utf8')));
+      const p = JSON.parse(fs.readFileSync(path.join(POSTS_DIR, f), 'utf8'));
+      // Shape, not just syntax: the CI snapshot guard only JSON.parse-es each
+      // file, so a structurally wrong post (valid JSON, missing downloads)
+      // would otherwise crash later as a bare TypeError on p.downloads.flatMap.
+      if (!isValidPost(p)) {
+        bad.push(`${f}: invalid post shape (need string slug/title and a downloads array)`);
+        continue;
+      }
+      posts.push(p);
     } catch (e) {
       bad.push(`${f}: ${e.message}`);
     }
@@ -223,7 +198,7 @@ function main() {
   if (bad.length) {
     // Fail loudly with the offending file names instead of a bare SyntaxError
     // deep in the build (or silently dropping series from the model).
-    throw new Error(`Unparseable post files:\n  ${bad.join('\n  ')}`);
+    throw new Error(`Unusable post files:\n  ${bad.join('\n  ')}`);
   }
   console.log(`loaded ${posts.length} posts`);
 
@@ -263,46 +238,28 @@ function main() {
 
     const episodes = uniq.map((p) => {
       const meta = extractEpisodeMetadata(p);
+      // Trimmed contract: only fields the site renders (the full post stays
+      // in data/posts/*.json). Episode-level url/rating/synopsis/trailer/
+      // postId/author were measured unrendered — 13.4% dead weight, removed.
       return {
         slug: p.slug,
-        url: p.url,
         number: meta.number,
         displayNum: meta.displayNum,
         label: meta.label,
         date: p.publishedAt,
-        rating: p.rating,
         cover: p.cover,
-        synopsis: p.synopsis,
-        trailerYoutubeId: p.trailerYoutubeId,
         qualities: p.downloads.flatMap((d) =>
           d.qualities.map((q) => ({ quality: q.quality, links: q.links }))
         ),
-        contentImages: p.contentImages,
-        postId: p.postId,
-        author: p.author
+        contentImages: p.contentImages
       };
     });
 
-    episodes.sort((a, b) => {
-      if (a.date && b.date) {
-        const dCmp = String(b.date).localeCompare(String(a.date));
-        if (dCmp !== 0) return dCmp;
-      }
-      const numA = a.number ?? 0;
-      const numB = b.number ?? 0;
-      if (numB !== numA) return numB - numA;
-      return String(b.slug).localeCompare(String(a.slug));
-    });
+    episodes.sort(compareEpisodesDesc);
 
     const staff = {};
     for (const p of uniq) {
-      for (const [rawRole, names] of Object.entries(p.staff ?? {})) {
-        const role = rawRole.trim();
-        if (INVALID_ROLE_RE.test(role) || /[:/.\\]/.test(role)) continue;
-        const validNames = (names ?? [])
-          .map((n) => String(n).trim())
-          .filter((n) => n && !/^(https?:|\/\/|www\.)/i.test(n) && !/twitter\.com|t\.me|discord/i.test(n) && n.length <= 90);
-        if (!validNames.length) continue;
+      for (const [role, validNames] of Object.entries(cleanStaffRecord(p.staff))) {
         staff[role] = staff[role] ?? [];
         for (const n of validNames) if (!staff[role].includes(n)) staff[role].push(n);
       }
@@ -312,7 +269,6 @@ function main() {
 
     const series = {
       key: newest.malUrl ? `mal:${newest.malUrl}` : `slug:${asciiSlug(normalizeSlug(newest.slug))}`,
-      malUrl: pickLatest(uniq, (p) => p.malUrl),
       slug,
       title: (newest.title ?? '').replace(/\s*[-–]\s*\d{1,4}\s*$/, '').trim() || newest.title,
       altTitles: pickLatest(uniq, (p) => p.altTitles),
@@ -405,7 +361,7 @@ function main() {
 Generated: ${new Date().toISOString()}
 
 ## Totals
-- Source posts scraped: **${posts.length} / ${posts.length}** (0 failures)
+- Source posts loaded: **${posts.length} / ${files.length}** (unusable files fail the build)
 - Series entities: **${seriesList.length}**
 - Episode/release entries: **${totalEpisodes}**
 - Series with >1 release: ${multiEp}

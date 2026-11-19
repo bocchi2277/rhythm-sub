@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { photonToOrigin, slugFromUrl } from './util.mjs';
+import { isInvalidRole } from '../../shared/rules.mjs';
 
 function textWithBreaks($, el) {
   const $clone = $(el).clone();
@@ -12,14 +13,13 @@ function textWithBreaks($, el) {
 }
 
 const ROLE_RE = /^([A-Za-z][A-Za-z &+'-]{0,24})\s*[:：]/;
-const INVALID_ROLE_RE = /^(https?|ftp|www|anime\s*info|http)$/i;
 
 function parseStaffLine(rawLine) {
   const clean = rawLine.replace(/\s+/g, ' ').trim();
   const m = clean.match(ROLE_RE);
   if (!m) return null;
   const role = m[1].trim();
-  if (INVALID_ROLE_RE.test(role) || /[:/.\\]/.test(role)) return null;
+  if (isInvalidRole(role)) return null;
 
   let rest = clean.slice(m[0].length);
 

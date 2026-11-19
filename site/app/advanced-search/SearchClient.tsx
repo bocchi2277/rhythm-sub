@@ -30,7 +30,7 @@ const SORTS = [
 
 type SortKey = (typeof SORTS)[number]['key'];
 
-export default function SearchClient({ index }: { index: Item[] }) {
+export default function SearchClient({ indexUrl }: { indexUrl: string }) {
   const searchParams = useSearchParams();
   const paramsKey = searchParams.toString();
   // Parsed from the key so the effect below depends on a stable value and
@@ -46,6 +46,26 @@ export default function SearchClient({ index }: { index: Item[] }) {
     return SORTS.some((s) => s.key === raw) ? (raw as SortKey) : 'recent';
   });
   const [limit, setLimit] = useState(24);
+
+  // The index ships as an immutable content-hashed JSON (public/search-index/)
+  // shared with /search — fetched once, cached across visits and pages,
+  // instead of being inlined into this must-revalidate page's HTML.
+  const [index, setIndex] = useState<Item[] | null>(null);
+  const [indexError, setIndexError] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch(indexUrl)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: Item[]) => {
+        if (alive) setIndex(data);
+      })
+      .catch(() => {
+        if (alive) setIndexError(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [indexUrl]);
 
   // The last query string this component wrote itself. React keeps the
   // component mounted across a same-route navigation, so the lazy state
@@ -126,10 +146,10 @@ export default function SearchClient({ index }: { index: Item[] }) {
     updateUrl({ q, type, status, genre, sort: val });
   };
 
-  const types = useMemo(() => [...new Set(index.map((i) => i.type).filter(Boolean))].sort(), [index]);
+  const types = useMemo(() => [...new Set((index ?? []).map((i) => i.type).filter(Boolean))].sort(), [index]);
   const genres = useMemo(
     () =>
-      index
+      (index ?? [])
         .flatMap((i) => i.genres)
         .reduce<Record<string, number>>((a, g) => ((a[g] = (a[g] ?? 0) + 1), a), {}),
     [index]
@@ -145,14 +165,13 @@ export default function SearchClient({ index }: { index: Item[] }) {
 
   const results = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let out = index.filter(
+    const out = (index ?? []).filter(
       (i) =>
         (!needle || i.title.toLowerCase().includes(needle) || i.alt.toLowerCase().includes(needle)) &&
         (!type || i.type === type) &&
         (!status || i.status === status) &&
         (!genre || i.genres.includes(genre))
     );
-    out = [...out];
     switch (sort) {
       case 'title_asc':
         out.sort((a, b) => a.title.localeCompare(b.title));
@@ -224,7 +243,15 @@ export default function SearchClient({ index }: { index: Item[] }) {
         ))}
       </div>
 
-      <p className="text-sm text-muted mb-4" aria-live="polite">النتائج: {results.length}</p>
+      {index === null && !indexError && (
+        <p className="text-sm text-muted mb-4" aria-live="polite">جاري تحميل فهرس البحث…</p>
+      )}
+      {indexError && (
+        <p className="text-sm text-red-400 mb-4" aria-live="polite">تعذر تحميل فهرس البحث — حدّث الصفحة للمحاولة مجدداً.</p>
+      )}
+      {index !== null && (
+        <p className="text-sm text-muted mb-4" aria-live="polite">النتائج: {results.length}</p>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {results.slice(0, limit).map((r) => (

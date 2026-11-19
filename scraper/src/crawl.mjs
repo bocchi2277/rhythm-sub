@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fetchPage, sleepBetween } from './http.mjs';
-import { ensureSession } from './login.mjs';
+import { ensureSession, reauthOrThrow } from './login.mjs';
 import { BASE, DATA, loadEnv, writeJsonAtomic } from './util.mjs';
 
 const URLS_FILE = path.join(DATA, 'post_urls.json');
@@ -11,13 +11,13 @@ function extractUrls(html) {
   return [...new Set((html.match(POST_RE) ?? []).map((u) => u.replace(/\/+$/, '')))];
 }
 
-// A wp-login redirect means the session expired mid-crawl: force a fresh
-// login and retry the same URL once before giving up on it.
+// A wp-login redirect means the session expired mid-crawl: re-authenticate
+// (cookie-aware, see login.mjs) and retry the same URL once before giving up.
 async function fetchWithRelogin(url) {
   let res = await fetchPage(url);
   if (res.redirectedTo && /wp-login/.test(res.redirectedTo)) {
     console.log(`wp-login redirect for ${url} — re-authenticating and retrying once`);
-    await ensureSession({ force: true });
+    await reauthOrThrow();
     res = await fetchPage(url);
   }
   return res;

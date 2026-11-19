@@ -10,25 +10,18 @@ export type Quality = { quality: string; links: { name: string; url: string }[] 
 
 export type Episode = {
   slug: string;
-  url: string;
   number: number | null;
   label: string;
   date: string | null;
-  rating: number | null;
   cover: string | null;
   cardImage?: string | null;
   displayNum?: string | null;
-  synopsis: string;
-  trailerYoutubeId: string | null;
   qualities: Quality[];
   contentImages: string[];
-  postId: string | null;
-  author: string;
 };
 
 export type Series = {
   key: string;
-  malUrl: string | null;
   slug: string;
   title: string;
   altTitles: string[] | null;

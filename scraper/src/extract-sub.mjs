@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { safeJoin } from './util.mjs';
 
 const OUT_DIR = path.resolve('extracted_subtitles');
 
@@ -73,6 +75,15 @@ export function safeOutputName(name) {
     throw new Error(`Refusing unsafe output name: ${JSON.stringify(name ?? '')}`);
   }
   return cleaned;
+}
+
+// MKV track language comes from mkvmerge -J output of a DOWNLOADED file —
+// attacker-controlled. '../../../x' used to flow into path.join and escape
+// the bundle dir. Allowlist BCP-47-ish tags; anything else becomes 'und'.
+// Pure + exported for regression tests.
+export function safeTrackLang(lang) {
+  const s = String(lang ?? '').trim();
+  return /^[A-Za-z0-9_-]{1,32}$/.test(s) ? s : 'und';
 }
 
 async function resolveMediafireDirectUrl(mfUrl) {
@@ -212,11 +223,14 @@ export async function extractSubtitles(rawUrl, outputName) {
         for (const trk of subTracks) {
           const codec = (trk.codec || '').toLowerCase();
           const ext = codec.includes('subrip') || codec.includes('srt') ? 'srt' : 'ass';
-          const lang = trk.properties?.language || trk.properties?.language_ietf || 'und';
+          const lang = safeTrackLang(trk.properties?.language || trk.properties?.language_ietf);
           const trackTitle = trk.properties?.track_name ? sanitizeFilename(trk.properties.track_name) : '';
           const isDefault = trk.properties?.default_track ? '_default' : '';
           const suffix = trackTitle ? `_[${lang}]_[${trackTitle}]` : `_[${lang}]_track${trk.id}${isDefault}`;
-          const subOutFile = path.join(targetSubDir, `${cleanBaseName}${suffix}.${ext}`);
+          // Containment, not just sanitization: every component above comes
+          // from a downloaded (attacker-controllable) MKV. safeJoin throws
+          // rather than let mkvextract/ffmpeg write outside the bundle.
+          const subOutFile = safeJoin(targetSubDir, `${cleanBaseName}${suffix}.${ext}`);
 
           console.log(`   📝 Extracting Track #${trk.id} (${lang}${trackTitle ? ` - ${trackTitle}` : ''}) -> ${path.basename(subOutFile)}`);
           try {
@@ -238,9 +252,13 @@ export async function extractSubtitles(rawUrl, outputName) {
           const toExtract = [];
           for (const att of attachments) {
             const fName = sanitizeFilename(att.file_name || `font_${att.id}.ttf`);
+            // Dot-only names ('..') survive sanitizeFilename (no separator
+            // chars) and would walk out of fontsDir — reject + contain.
+            if (!fName || /^\.+$/.test(fName)) continue;
+            const fontPath = safeJoin(fontsDir, fName);
             if (!seenFontNames.has(fName.toLowerCase())) {
               seenFontNames.add(fName.toLowerCase());
-              toExtract.push(`${att.id}:${path.join(fontsDir, fName)}`);
+              toExtract.push(`${att.id}:${fontPath}`);
             }
           }
           if (toExtract.length > 0) {
@@ -289,8 +307,10 @@ export async function extractSubtitles(rawUrl, outputName) {
   }
 }
 
-// Direct CLI Execution
-if (process.argv[1]?.endsWith('extract-sub.mjs')) {
+// Direct CLI Execution — compare the resolved path (not a filename suffix):
+// an endsWith('extract-sub.mjs') check would also fire for an unrelated file
+// that happens to share the name (same convention as login.mjs / sync.mjs).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const url = process.argv[2] || 'https://nyaa.si/download/2151962.torrent';
   const name = process.argv[3] || 'Subtitles_Batch';
   extractSubtitles(url, name).catch((e) => {

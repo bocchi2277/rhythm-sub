@@ -15,6 +15,10 @@ const WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
 
 const DAY_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
+// Activity window for the weekly schedule. Evaluated at BUILD time only —
+// distinct from the homepage currentProjects fallback (30 days, lib/data.ts).
+const SCHEDULE_WINDOW_DAYS = 21;
+
 function weekdayOf(iso: string | null): number | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -52,7 +56,7 @@ export default function SchedulePage() {
       const latest = newestDatedEpisode(s.episodes);
       if (!latest) return false;
       if (/\bBD\b|Vol\./i.test(latest.displayNum ?? '')) return false;
-      return Date.now() - new Date(latest.date!).getTime() < 21 * 24 * 3600 * 1000;
+      return Date.now() - new Date(latest.date!).getTime() < SCHEDULE_WINDOW_DAYS * 24 * 3600 * 1000;
     })
     .sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
 

@@ -48,6 +48,9 @@ jobs:
       - name: Typecheck
         run: cd site && npm run typecheck
 
+      - name: Lint
+        run: cd site && npm run lint
+
       - name: Build static export
         run: cd site && npm run build
 

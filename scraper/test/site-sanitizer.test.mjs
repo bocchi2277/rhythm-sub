@@ -49,3 +49,13 @@ test('sanitizer rewrites third-party images to a local asset', { skip: SKIP }, (
   // A local asset stays untouched.
   assert.ok(clean('<img src="/img/local.webp">').includes('/img/local.webp'));
 });
+
+test('sanitizer + mapper neutralize backslash protocol-relative and class redress', { skip: SKIP }, () => {
+  // /\evil.com resolves to https://evil.com in WHATWG URL parsing — the
+  // mapper must not pass it through as a "local" path.
+  const out = clean('<img src="/\\evil.example/b.gif">');
+  assert.ok(!out.includes('evil.example'), out);
+  // Wildcard class was dropped: upstream cannot reuse bundled utilities
+  // (hidden/fixed/...) for UI redress.
+  assert.equal(clean('<p class="hidden fixed inset-0">x</p>'), '<p>x</p>');
+});

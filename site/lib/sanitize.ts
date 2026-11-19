@@ -60,7 +60,11 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   td: ['colspan', 'rowspan', 'align'],
   th: ['colspan', 'rowspan', 'align'],
   font: ['color', 'size', 'face'],
-  '*': ['class', 'align']
+  // No wildcard 'class': upstream markup must not reuse bundled utilities
+  // (hidden/fixed/z-*) for UI redress. pages.ts adds wp-img-row itself AFTER
+  // sanitization, and the only classes in current data (alignnone, wp-image-*)
+  // have no CSS rules — dropping them changes nothing visually.
+  '*': ['align']
 };
 
 /** Maps an <img src> found in untrusted markup to a safe, local URL. */

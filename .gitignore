@@ -34,3 +34,8 @@ data/optimize_failures.json
 data/scrape_failures.json
 data/pages/_footer.json
 data/pages/_banners_raw.json
+
+# Generated at build time by scripts/build-search-index.mjs (content-hashed,
+# regenerated on every build). The small pointer site/search-index-manifest.json
+# IS committed so a fresh checkout typechecks before the first build.
+site/public/search-index/

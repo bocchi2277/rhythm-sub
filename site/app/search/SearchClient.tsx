@@ -6,13 +6,32 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 
 type Item = { slug: string; title: string; alt: string; cover: string; year: number | null; type: string; status: string; rating: number | null };
 
-function SearchInner({ index }: { index: Item[] }) {
+function SearchInner({ indexUrl }: { indexUrl: string }) {
   const searchParams = useSearchParams();
   const paramsKey = searchParams.toString();
   const params = useMemo(() => new URLSearchParams(paramsKey), [paramsKey]);
 
   const [q, setQ] = useState(params.get('q') ?? '');
   const [limit, setLimit] = useState(50);
+
+  // Same immutable content-hashed index as /advanced-search (one cache entry
+  // shared across both search pages and repeat visits).
+  const [index, setIndex] = useState<Item[] | null>(null);
+  const [indexError, setIndexError] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch(indexUrl)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: Item[]) => {
+        if (alive) setIndex(data);
+      })
+      .catch(() => {
+        if (alive) setIndexError(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [indexUrl]);
 
   // React keeps this component mounted across a same-route navigation, so the
   // state initializer above only runs on the FIRST mount. Sync the query box
@@ -25,7 +44,7 @@ function SearchInner({ index }: { index: Item[] }) {
 
   const results = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return [];
+    if (!needle || !index) return [];
     return index.filter(
       (i) => i.title.toLowerCase().includes(needle) || i.alt.toLowerCase().includes(needle) || i.slug.includes(needle.replace(/\s+/g, '-'))
     );
@@ -45,7 +64,13 @@ function SearchInner({ index }: { index: Item[] }) {
         className="w-full bg-card border border-edge rounded-2xl px-5 py-4 text-lg focus:outline-none focus:border-accent transition-colors"
       />
 
-      {q.trim() && (
+      {index === null && !indexError && (
+        <p className="text-sm text-muted mt-4 mb-4" aria-live="polite">جاري تحميل فهرس البحث…</p>
+      )}
+      {indexError && (
+        <p className="text-sm text-red-400 mt-4 mb-4" aria-live="polite">تعذر تحميل فهرس البحث — حدّث الصفحة للمحاولة مجدداً.</p>
+      )}
+      {q.trim() && index !== null && (
         <p className="text-sm text-muted mt-4 mb-4" aria-live="polite">النتائج: {results.length}</p>
       )}
 
@@ -67,7 +92,7 @@ function SearchInner({ index }: { index: Item[] }) {
             </div>
           </Link>
         ))}
-        {q.trim() && results.length === 0 && (
+        {q.trim() && index !== null && results.length === 0 && (
           <p className="text-muted text-sm py-8 text-center">لا توجد نتائج مطابقة — جرّب البحث المتقدم بالفلاتر</p>
         )}
       </div>
@@ -82,10 +107,10 @@ function SearchInner({ index }: { index: Item[] }) {
   );
 }
 
-export default function SearchClient({ index }: { index: Item[] }) {
+export default function SearchClient({ indexUrl }: { indexUrl: string }) {
   return (
     <Suspense fallback={null}>
-      <SearchInner index={index} />
+      <SearchInner indexUrl={indexUrl} />
     </Suspense>
   );
 }

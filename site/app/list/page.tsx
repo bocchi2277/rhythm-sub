@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { allSeries } from '@/lib/data';
 import AnimeCard from '@/components/AnimeCard';
 

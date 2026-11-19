@@ -3,6 +3,21 @@
 > آخر تحديث: 2026-08-25 — الحالة: موقع حي ومكتمل على https://rhythm-sub.pages.dev
 > هذه الوثيقة مكتوبة لتتمكن أي نسخة ذكاء اصطناعي (أو مطور) من استكمال العمل دون إعادة استكشاف.
 >
+> ## ملحق 2026-11-19 — تدقيق جودة شامل + إصلاحات (انطلاقاً من HEAD 497c49b)
+> - **القياسات الحالية:** 425 سلسلة / 1027 رابط منشور / 440 صفحة HTML (‏out = 187MB: منها 123MB صور WebP، و~63MB HTML بسبب حقن CSS ‏~42.6KB في كل صفحة). أرقام المتن القديمة (426/992/437) سبقت إعادة سحب أكتوبر وصُححت.
+> - **خط المزامنة سليم الآن وليس معطلاً:** بعد إصلاحات 2026-11-10 كل تشغيلات auto-sync ناجحة (عبر API: ‏34 نجاحاً في آخر 100 تشغيل، صفر فشل بعد الإصلاح). التشغيلات الناجحة لا تجد إصدارات جديدة فلا تلتزم شيئاً — لهذا sync-data ما زال لقطة 7 أكتوبر وmain عند 497c49b. عبارة "لم ينجح ولا مرة" في ملحق 2026-11-10 أصبحت تاريخية ولا تصف الوضع الحالي.
+> - **تشفير كاش الجلسة صار AES-256-GCM ‏(AEAD)** عبر `scraper/src/session-crypto.mjs` ‏(PBKDF2-SHA256 بـ600000 تكرار، صيغة RSC1) بدل openssl CBC غير المصادَق عليه. الكاشات القديمة بصيغة CBC تُفك للقراءة فقط ثم يُعاد تشفيرها GCM تلقائياً. اختبارات: `scraper/test/session-crypto.test.mjs`. تذكير: على الريبو العام أي fork PR يقرأ مدخلات الكاش — الحماية هي المفتاح السري.
+> - **تحصين auto-sync إضافي:** فك الجلسة **بعد** `npm ci` (لا يرى install script نص الجلسة أبداً)؛ حارس أعضاء اللقطة يقبل `posts/` فقط (عضو مثل `releases/evil.json` كان سيُزرع في data ثم يُدفع إلى main)؛ مجموعة concurrency ثابتة `auto-sync` بدل `github.ref` (تشغيل يدوي على فرع آخر كان ينافس الجدولة).
+> - **تحقق أقوى من شكل البيانات:** `site/lib/validate.ts` (منقول من data.ts، pure وقابل للاختبار عبر type stripping) يرفض الحلقات ناقصة slug/label/qualities برسالة تحدد الفهرس؛ `build-model.mjs` يرفض ملفات posts ذات شكل خاطئ **باسم الملف** (`isValidPost`). اختبارات جديدة في `scraper/test/`.
+> - **إصلاحات scraper:** ‏`sync.mjs` يستدعي `reauthOrThrow()` في حلقة المنشورات (كان `ensureSession({force:true})` يكسر وضع `RHYTHM_COOKIE`)؛ فشل RSS لم يعد صامتاً؛ حارس CLI في `extract-sub.mjs` يقارن المسار الكامل بدل `endsWith`.
+> - **site:** ‏`ensureUniqueEpisodeSlugs` يلحق اللاحقة بالـslug الجاري لا الأصلي (حالة slug فارغ)؛ أضيف `site/public/robots.txt`.
+> - **إصلاحات الجولة الثانية (بعد تقارير الـsubagents الخمسة):** ReDoS تربيعي في regex تحية الملخص (قِسته بنفسي: 8.4 ثانية لـ100 ألف مسافة — الآن 4ms، مع اختبار regression في series-rules)؛ sync كان يخرج **أخضر** عند اكتشاف صفر روابط (الآن يصرخ مثل crawl) ولا يختصر post_urls.json عند تعذر قراءته؛ مسار اختراق في extract-sub.mjs عبر لغة مسار MKV غير المعقّمة (الآن safeTrackLang + safeJoin للنصوص والخطوط)؛ توحيد reauthOrThrow في login.mjs لكل من sync/crawl/scrape؛ صور protocol-relative بصيغة `/\` صارت مرفوضة في img()؛ بوابة الأصول الخارجية صارت تفحص `//` و`/\` و`url()` في CSS (اختبار ذاتي: 4 مخالفات ملتقطة)؛ روابط السوشيال تُجمع بـallowlist مضيفات دقيق بدل substring؛ حذف class العام من الـsanitizer؛ تحقق charset لـseriesSlug في إصدارات الفريق؛ حذف 4 وحدات scratch ميتة؛ حراسة CLI لـfetch-pages/fetch-banners/fetch-home-extras؛ توسيع اختبار parity ليثبت 5 من 6 قواعد مشتركة (slug، الملخص، franchise key، ترتيب الحلقات، تنظيف staff) عبر site/lib/episodes.ts وcleanStaffRecord في text.ts. **النتيجة النهائية: 59 اختباراً ناجحاً (0 skipped)، typecheck ✓، بناء 440 صفحة ✓، بوابتا CSS والأصول ✓.**
+> - **الجولة الثالثة (بنية الجودة):** ESLint ‏(`eslint-config-next@15.5.29` مطابق لإصدار Next، عبر FlatCompat) مع `npm run lint` وبوابة lint في ci.yml — كشف وأصلح خطأين حقيقيين (prefer-const في SearchClient بعد حذف النسخة الميتة، وLink غير مستخدم في list). اختبارات جديدة: parse.mjs بالكامل (fixtures حديثة + قديمة + مستند فارغ) وseries-split/team-releases عبر `registerHooks` (يحل استيراد TS بدون امتداد) + smoke test لجذر التركيب data.ts على البيانات الحقيقية — **72 اختباراً، 0 skipped**. بوابة بناء داخل auto-sync قبل الدفع (typecheck+lint+build+بوابتا CSS والأصول) تعمل **فقط** عند وجود بيانات جديدة، وشرط النشر صار `success()` صريحاً. ‏npm audit: **0 ثغرات** في الحزمتين.
+> - **الجولة الرابعة (طلبات العميل الستة):** (1) دمج القواعد المشتركة في `shared/rules.mjs` كمصدر وحيد — site/lib/slug.ts وepisodes.ts وtext.ts وscraper/build-model.mjs كلها re-export/استيراد منه (اختبار parity يثبت 5/6 قواعد). (2) CSP hashes بدل `'unsafe-inline'` للسكربتات: `scripts/csp-hashes.mjs` يحقن meta CSP لكل صفحة (440 صفحة، 9258 hash مقتبس)؛ `_headers` بلا script-src/default-src عمداً (التقاطع)؛ **الدرس المنتزع: hash بلا علامات اقتباس مفردة = مصدر باطل يتجاهله المتصفح ويحجب كل السكربتات — اكتشفه اختبار المتصفح الحقيقي (verify-round4.mjs) لا الفحص البنيوي الذي اكتفى بوجود النص**. (3) صور content-addressed: الاسم من sha1 للـbytes المحسّنة؛ هجرة `optimize:force`: 2083 صورة أعيد تحسينها، 78 احتفظت بأسمائها القديمة (أصولها الأصلية مفقودة)، 0 ملفات ناقصة في manifest، تنظيف 2083 يتيماً، و9 صور متطابقة اندمجت تلقائياً. (4) حذف الحقول غير المعروضة من العقد: series.json ‏2,281,831 → 1,770,421 bytes (‏−22.4%) بحذف url/rating/synopsis/trailerYoutubeId/postId/author من الحلقات وmalUrl من السلاسل (المنشور الكامل يبقى في data/posts/). (5) فهرس بحث immutable: `public/search-index/<hash>.json` ‏149KB تجلبه صفحتا البحث بـfetch بدل حقنه في HTML (مدخل كاش واحد للصفحتين). (6) تنظيف التاريخ بـBFG (انظر الملحق أدناه). **الإثبات: 72 اختباراً ✓، typecheck/lint ✓، بناء 440 ✓، بوابتا CSS والأصول ✓، وverify-round4.mjs في Chromium حقيقي: 0 أخطاء console/CSP، البحث يرندر 8 نتائج لـyoujo ويجلب الفهرس (166KB)، القائمة تتفاعل، صفحة الأنمي تعرض الحلقات.**
+> - **تأكيد المالك (2026-11-19): كلمة مرور الموقع القديمة دُوّرت بالفعل** — التعرض في سجل git أصبح credential ميتاً، وتنظيف التاريخ (BFG/filter-repo + force-push) صار اختيارياً غير عاجل.
+> - **نافذتا "النشاط" مختلفتان عمداً:** ‏`/schedule` = 21 يوماً (موثق)، احتياطي `currentProjects` في data.ts = 30 يوماً. الاثنتان تُقيَّمان **وقت البناء فقط** في موقع ثابت — القوائم تتجمد بين عمليات البناء، ونفس الـcommit يُنتج جدولاً مختلفاً حسب يوم البناء (توصية: إعادة تقييم client-side أو بناء دوري).
+> - **المتبقي بعد الجولة الرابعة:** قرار منتج لنافذة `/schedule` (فاضي حالياً بشكل صحيح لأن آخر إصدار مؤرخ 2026-10-04 أقدم من 21 يوماً — الخيارات: نافذة أطول، إعادة تقييم client-side، أو بناء دوري)؛ اختبارات أعمق وCodeQL/secret scanning (اختياري). بنود الجولة الرابعة الستة منفذة ومثبتة (انظر أعلاه).
+>
 > ## ملحق 2026-10-07 — إصلاح المزامنة التلقائية
 > - توقفت المزامنة منذ 2026-08-27 (كل تشغيل مجدول كان يفشل exit 1): Standard fresh-login من GitHub IP خلف Cloudflare + غياب `data/posts/` في الـrunner.
 > - سُحبت 31 حلقة مفقودة (1027 منشوراً) محلياً ودُفعت. البناء: 440 صفحة.
@@ -43,7 +58,7 @@
 - الرابط: https://rhythm-sub.pages.dev — مشروع Pages باسم `rhythm-sub` في حساب CF واحد (معرّف الحساب وكلمة مروره محفوظان خارج الريبو؛ الريبو عام فلا تُذكر هنا).
 - مربوط بـGitHub: `bocchi2277/rhythm-sub` — أي `git push` إلى main = بناء ونشر تلقائي (~3 دقائق).
 - إعدادات بناء Pages: Build command: `cd site && npm ci && npm run build` — Output: `/site/out` — Node 22 (ملفا .nvmrc بالجذر).
-- 437 صفحة ثابتة. حساب CF يحوي أيضاً مشروعين آخرين (teahousesubs, teahouse-subs) **لا تلمسهما**.
+- 440 صفحة ثابتة (قياس 2026-11-19). حساب CF يحوي أيضاً مشروعين آخرين (teahousesubs, teahouse-subs) **لا تلمسهما**.
 
 ## 3. بنية المشروع
 
@@ -54,8 +69,8 @@ D:\rhythm\
 │   │   ├── page.tsx           # الرئيسية: HeroSlider عشوائي + آخر الحلقات (ترقيم ذكي) + مشاريعنا الحالية (القائمة المنسوحة من موقعهم) + الأعلى تقييماً + لافتتا PayPal/الدعم
 │   │   ├── anime/[slug]/      # صفحة العمل: هيرو، بيانات، شبكة حلقات بنمط ريفايف (EpisodeRow)، مُلخَّص القصَّة، فريق العمل (LTR)، مواضيع ذات صلة (بطاقات عمودين)
 │   │   ├── list/              # قائمة [A-Z] بأغلفة مجمعة حرفاً
-│   │   ├── series/            # السلاسل: 72 عائلة مبنية على بادئة slug الأولى (≥4 أحرف) بصفوف أغلفة أفقية
-│   │   ├── schedule/          # جدول أسبوعي مبني من currentProjects (يوم آخر إصدار)
+│   │   ├── series/            # السلاسل: عائلات مبنية على أول كلمتين من الـslug (ثلاث لو الأولى بادئة عامة) بصفوف أغلفة أفقية
+│   │   ├── schedule/          # جدول أسبوعي مشتق مباشرة من allSeries (الأعمال المستمرة بآخر إصدار dated خلال 21 يوماً — يوم آخر إصدار)
 │   │   ├── advanced-search/   # فلاتر: نوع/حالة/تصنيف + ترتيبات (SearchClient.tsx عميل)
 │   │   ├── search/            # بحث عادي (عميل، ?q=)
 │   │   ├── random/            # فاجئني: تحويل عشوائي عميل
@@ -65,7 +80,7 @@ D:\rhythm\
 │   ├── lib/                   # طبقة البيانات مقسّمة حسب المسؤولية:
 │   │   ├── data.ts            # ⭐ جذر التركيب: تحميل ../data/series.json → تحقق → إصلاح → تطبيع → دمج → اشتقاق (franchises، currentProjects، latestReleases)
 │   │   ├── images.ts          # img-manifest.json + تحويل روابط الصور المسحوبة إلى أصول محلية (يرفض المضيفين الخارجيين)
-│   │   ├── text.ts            # تنظيف العناوين والملخّصات (pure) — نسخة مطابقة لما في scraper/src/build-model.mjs
+│   │   ├── text.ts            # تنظيف العناوين والملخّصات (pure) — safeSynopsis وcleanStaffRecord نسختان مطابقتان لـscraper/src/build-model.mjs (مثبتة باختبار parity)؛ باقي الدوال خاصة بالموقع
 │   │   ├── slug.ts            # قواعد slug ومفتاح السلسلة (pure) — نسخة مطابقة لما في scraper/src/build-model.mjs
 │   │   ├── types.ts           # أنواع النطاق (pure)
 │   │   ├── sanitize.ts        # قائمة سماح HTML (allowlist) — الخطر الأخير قبل dangerouslySetInnerHTML
@@ -75,7 +90,7 @@ D:\rhythm\
 │   │   ├── series-split.ts    # فصل المنشورات الخاصة بسلسلة أخرى (إصلاح بيانات المصدر)
 │   │   └── team-releases.ts   # دمج data/releases/*.json (يبقى ضمن lib/data.ts عبر applyTeamReleases)
 │   ├── public/img/            # 2083 صورة WebP محسّنة (~115MB)
-│   ├── public/img-manifest.json  # خريطة { رابط أصلي → /img/hash.webp }
+│   ├── img-manifest.json    # خريطة { رابط أصلي → /img/hash.webp } — خارج public/ عمداً (بيانات بناء فقط، لا تُنشر)
 │   ├── public/fonts/          # IBM Plex Sans Arabic woff2 (arabic+latin 400/500/700) مستضافة ذاتياً
 │   ├── public/banners/        # لافتتا PayPal والدعم الأصليتان من /img/01.jpg و /img/02.jpg
 │   ├── scripts/               # optimize-images.mjs، download-images.mjs، inline-css.mjs (يُحقن CSS بكل صفحة — لا تعتمد على طلب خارجي؛ SKIP_CSS_INLINE=1 يبقي <link> والذاكرة المؤقتة)، check-css-coverage.py، check-no-external-assets.mjs، fetch-fonts.mjs، preview-server.mjs
@@ -91,9 +106,9 @@ D:\rhythm\
 │   ├── download-images.mjs    # تنزيل الأصول (تخطي الموجود، خريطة image_map.json للأسماء الطويلة >200 محرف)
 │   └── fetch-pages.mjs / fetch-home-extras.mjs / fetch-banners.mjs
 ├── data/
-│   ├── series.json            # ⭐ النموذج النهائي: 426 سلسلة / 992+ إصداراً
-│   ├── post_urls.json         # 992 رابط منشور
-│   ├── posts/*.json           # 992 منشوراً مُحللاً (gitignored)
+│   ├── series.json            # ⭐ النموذج النهائي: 425 سلسلة / 1027 إصداراً (قياس 2026-11-19)
+│   ├── post_urls.json         # 1027 رابط منشور
+│   ├── posts/*.json           # 1027 منشوراً مُحللاً (gitignored)
 │   ├── pages/about.json|support.json|_footer.json|_home_extras.json
 │   ├── releases/_example.json # نموذج إضافة حلقة جديدة يدوياً (تُدمج تلقائياً في lib/data.ts)
 │   └── images/                # الأصول الأصلية 895MB (gitignored — نسخة احتياطية محلية فقط)
@@ -123,7 +138,7 @@ D:\rhythm\
 3. **تنظيف الملخصات** (build-model cleanSynopsis + data.ts safeSynopsis): حذف بادئة "قصة الأنمي:"، رفض ما يبدأ بـ"التصنيف:/الحالة:..." (كانت ul.spe تتسرب كملخص)، إخفاء الصندوق إن فارغ.
 4. **دور "Anime Info" يُحذف** دائماً من staff (هو رابط MAL، محفوظ في malUrl).
 5. **currentProjects**: القائمة المنسوحة يدوياً من صفحتهم الرئيسية (`_home_extras.json` → مطابقة asciiSlug) تُستخدم لمشاريع الرئيسية؛ جدول `/schedule` مستقل ويشتق الأعمال النشطة من الحالة وتاريخ آخر إصدار (آخر 21 يوماً).
-6. **franchises**: تجميع بأول مقطع من الـslug (≥4 أحرف، >1 عضو). الاسم = عنوان أقصر عضو قبل أول نقطتين.
+6. **franchises**: تجميع بأول كلمتين من الـslug (ثلاث لو الأولى بادئة عامة مثل kono/princess، >1 عضو). الاسم = عنوان أقصر عضو قبل أول نقطتين.
 7. **img-manifest**: كل صورة = `/img/<sha1-16>.webp` — أي رابط غير موجود في الخريطة يعود placeholder.svg. سكربتا التنزيل/التحسين يقرآن covers + e.cover + contentImages + صور pages (لا تنسَ أي مصدر جديد).
 
 ## 7. أخطاء مكلفة وقعت (لا تكررها)
@@ -142,7 +157,7 @@ D:\rhythm\
 (cd scraper && npm ci && npm test)   # صياغة + اختبارات وحدة — بوابة CI
 cd site
 npm run typecheck # فحص الأنواع — بوابة CI
-npm run build     # next build && node scripts/inline-css.mjs (حقن CSS بكل صفحة)
+npm run build     # build-search-index → next build → inline-css → csp-hashes (فهرس بحث + حقن CSS + CSP hashes)
 python3 scripts/check-css-coverage.py  # بوابة CI بعد البناء: كلاسات Tailwind المستخدمة موجودة في CSS المبني
 git add -A && git commit && git push   # → CF Pages يبني وينشر تلقائياً
 ```
@@ -171,4 +186,4 @@ curl.exe -sS "https://rhythm-sub.pages.dev/" -o "$env:TEMP\h.html"; [System.IO.F
 
 ## 11. أرقام نهائية
 
-992 منشوراً مسحوباً (0 فشل) → 426 سلسلة → 437 صفحة منشورة → 2083 صورة WebP (889MB→115MB) → 72 سلسلة مرتبطة → 5 مشاريع حالية (منسوحة) → 15+ صفحة ترقيم في "آخر الحلقات" → Lighthouse-friendly (ثابت كامل، JS مشترك 103KB).
+1027 منشوراً مسحوباً → 425 سلسلة → 440 صفحة منشورة → 2152 صورة WebP فريدة (889MB→115MB؛ 2161 مدخل manifest، و9 صور متطابقة اندمجت تلقائياً بفضل content-hash) → 72 سلسلة مرتبطة → ثابت كامل، JS مشترك 103KB + فهرس بحث immutable ‏149KB. (قياس 2026-11-19 بعد الجولة الرابعة؛ الأرقام القديمة 992/426/437 سبقت إعادة سحب أكتوبر.)
