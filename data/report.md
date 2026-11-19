@@ -1,12 +1,12 @@
 # Rhythm-Sub scrape & model report
-Generated: 2026-11-19T20:53:03.208Z
+Generated: 2026-11-19T22:00:05.435Z
 
 ## Totals
-- Source posts loaded: **1033 / 1033** (unusable files fail the build)
+- Source posts loaded: **1047 / 1047** (unusable files fail the build)
 - Series entities: **425**
-- Episode/release entries: **1033**
+- Episode/release entries: **1047**
 - Series with >1 release: 122
-- Unique images referenced: **2131**
+- Unique images referenced: **2161**
 
 ## Field coverage (series level)
 | Field | Coverage |
