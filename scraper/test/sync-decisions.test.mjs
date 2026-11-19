@@ -19,9 +19,11 @@ import {
 test('parseInventory accepts a JSON array of URLs', () => {
   const r = parseInventory('["https://rhythm-sub.com/2024/01/02/a/","https://rhythm-sub.com/2024/01/02/b/"]');
   assert.equal(r.readable, true);
+  // Boundary normalization: trailing slashes are stripped (see the
+  // dedicated normalization test below for why).
   assert.deepEqual(r.urls, [
-    'https://rhythm-sub.com/2024/01/02/a/',
-    'https://rhythm-sub.com/2024/01/02/b/'
+    'https://rhythm-sub.com/2024/01/02/a',
+    'https://rhythm-sub.com/2024/01/02/b'
   ]);
 });
 
@@ -29,6 +31,17 @@ test('parseInventory accepts an empty array as readable', () => {
   const r = parseInventory('[]');
   assert.equal(r.readable, true);
   assert.deepEqual(r.urls, []);
+});
+
+test('parseInventory normalizes trailing slashes to the inventory convention', () => {
+  // recover once wrote slashed URLs; sync compares slash-less forms, so the
+  // boundary must normalize or every slashed entry looks brand-new.
+  const r = parseInventory('["https://rhythm-sub.com/2024/01/02/a/","https://rhythm-sub.com/2024/01/02/b"]');
+  assert.equal(r.readable, true);
+  assert.deepEqual(r.urls, [
+    'https://rhythm-sub.com/2024/01/02/a',
+    'https://rhythm-sub.com/2024/01/02/b'
+  ]);
 });
 
 test('parseInventory rejects a non-array inventory with the documented reason', () => {

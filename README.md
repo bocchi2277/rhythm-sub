@@ -99,6 +99,7 @@ powershell -ExecutionPolicy Bypass -File scraper/scripts/register-local-sync.ps1
 
 - المهمة: **"Rhythm-Sub Local Sync"** — كل 6 ساعات (00:15/06:15/12:15/18:15)، `StartWhenAvailable` + `WakeToRun` (بتوقظ الجهاز من **السليب** وتزامنه وترجعه نام — مش من الإغلاق الكامل؛ وعلى البطارية wake timers مقفولة افتراضياً)، بدون أدمن وبدون كلمة مرور مخزنة. اللوج: `data/sync-local.log` (مستبعد من git).
 - أول تشغيل حقيقي (2026-11-19) لقى وزامن **6 إصدارات جديدة** كانت المزامنة السحابية مش شايفاها — دفعتها وCI عدّى عليها.
+- **جرد REST مدمج في المزامنة نفسها**: لو `RHYTHM_APP_PASSWORD` موجود (application password من صفحة بروفايلك على الموقع — لا ينتهي، بدون أدمن)، كل تشغيل بيجيب الجرد الكامل (~1039 منشور) ويعمل reconciliation — أي حلقة ناقصة بتتسحب تلقائياً (+1007 رابط خارج رؤية الرئيسية). من غير الـpassword المزامنة شغالة عادي بالرئيسية بس، وفشل REST مش قاتل. لتفعيله في السحابة كمان: ضيف نفس القيمة كـGitHub secret باسم `RHYTHM_APP_PASSWORD`.
 - `auto-sync` السحابي لسه شغال كـfallback احتياطي؛ لو إشعارات فشله المتقطعة بتضايقك، عطّل الـ`schedule` trigger في `auto-sync.yml` وسيب `workflow_dispatch` للتشغيل اليدوي.
 - لتقوية الـfallback السحابي (اختياري): فلتر `auth_cookie_expiration` الموثق تحت (كوكي سنة بدل 14 يوم) + حساب WordPress بدور Subscriber مخصص للسحب (أقل صلاحية).
 

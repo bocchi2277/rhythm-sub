@@ -19,22 +19,15 @@ import { fetchPage, jar, sleepBetween } from '../src/http.mjs';
 import { ensureSession } from '../src/login.mjs';
 import { parsePost } from '../src/parse.mjs';
 import { isValidPost } from '../src/build-model.mjs';
+import { fetchRestInventory } from '../src/rest.mjs';
 
 loadEnv();
 if (!process.env.RHYTHM_APP_PASSWORD) {
   console.error('RHYTHM_APP_PASSWORD is not set. Create an Application Password on your WordPress profile page and add it to scraper/.env (local) or GitHub secrets (CI).');
   process.exit(1);
 }
-const auth = 'Basic ' + Buffer.from(process.env.RHYTHM_USER + ':' + process.env.RHYTHM_APP_PASSWORD).toString('base64');
-
-// 1. Authoritative inventory via REST.
-const all = [];
-for (let page = 1; page <= 50; page++) {
-  const r = await fetch(`https://rhythm-sub.com/wp-json/wp/v2/posts?per_page=100&page=${page}&_fields=slug,link,date&orderby=date&order=desc`, { headers: { Authorization: auth } });
-  if (!r.ok) throw new Error(`REST page ${page}: HTTP ${r.status}`);
-  all.push(...(await r.json()));
-  if (page >= Number(r.headers.get('x-wp-totalpages') || 1)) break;
-}
+// 1. Authoritative inventory via REST — the same shared module sync uses.
+const all = await fetchRestInventory({ user: process.env.RHYTHM_USER, appPassword: process.env.RHYTHM_APP_PASSWORD });
 const URLS_FILE = path.join(DATA, 'post_urls.json');
 const inventory = JSON.parse(fs.readFileSync(URLS_FILE, 'utf8'));
 const invSet = new Set(inventory.map((u) => u.replace(/\/+$/, '')));
@@ -64,7 +57,9 @@ for (const p of missing) {
       continue;
     }
     writeJsonAtomic(path.join(POSTS_DIR, `${slugFromUrl(url)}.json`), post);
-    invSet.add(url);
+    // Inventory convention is slash-less (extractUrls strips them); adding
+    // the slashed form created false-new duplicates on the next sync.
+    invSet.add(url.replace(/\/+$/, ''));
     ok++;
     console.log(`recovered: ${post.title} (${post.downloads.reduce((n, d) => n + d.qualities.length, 0)} quality rows)`);
     await sleepBetween(400);

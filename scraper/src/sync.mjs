@@ -16,6 +16,7 @@ import { fetchPage, jar, sleepBetween } from './http.mjs';
 import { ensureSession, reauthOrThrow } from './login.mjs';
 import { parsePost } from './parse.mjs';
 import { DATA, POSTS_DIR, BASE, loadEnv, slugFromUrl, ensureDirs, isAllowedImageHost, readBodyLimited, writeJsonAtomic, writeFileAtomic, fetchAllowedImage } from './util.mjs';
+import { fetchRestInventory } from './rest.mjs';
 
 const POST_RE = new RegExp(`https?://rhythm-sub\\.com/20\\d{2}/\\d{2}/\\d{2}/[^"'#<>\\s]+`, 'g');
 const URLS_FILE = path.join(DATA, 'post_urls.json');
@@ -52,7 +53,10 @@ export function parseInventory(raw) {
   try {
     const urls = JSON.parse(raw);
     if (!Array.isArray(urls)) throw new Error('post_urls.json is not an array');
-    return { urls, readable: true, error: null };
+    // Normalize to the slash-less convention at the boundary: a slashed
+    // entry (once written by recover) would compare as brand-new against
+    // extractUrls/mergeDiscovery output and trigger false re-fetches.
+    return { urls: urls.map((u) => (typeof u === 'string' ? u.replace(/\/+$/, '') : u)), readable: true, error: null };
   } catch (e) {
     return { urls: [], readable: false, error: e.message };
   }
@@ -109,6 +113,26 @@ export function buildCommitMsg(newTitles) {
     `Sync new release: ${cleanTitles.slice(0, 3).join(', ')}` +
     `${cleanTitles.length > 3 ? ` (+${cleanTitles.length - 3} more)` : ''}`
   );
+}
+
+/** URL-parsed post-permalink check for REST discovery links: exact source
+ *  host + dated path with a slug segment. Not a substring match —
+ *  https://evil.com/?x=https://rhythm-sub.com/2024/... must not pass. */
+export function isPostUrl(u) {
+  try {
+    const url = new URL(u);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (url.hostname.toLowerCase() !== 'rhythm-sub.com') return false;
+    return /^\/20\d{2}\/\d{2}\/\d{2}\/[^/]+/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Merge homepage discovery with REST inventory links: normalize trailing
+ *  slashes (REST links carry them, extractUrls strips them), dedupe, sort. */
+export function mergeDiscovery(homepageUrls, restUrls) {
+  return [...new Set([...homepageUrls, ...restUrls.map((u) => u.replace(/\/+$/, ''))])].sort();
 }
 
 // When auth is delegated to an injected cookie, a redirect to wp-login means
@@ -239,8 +263,26 @@ export async function syncNewReleases(options = {}) {
   await ensureSession();
 
   console.log('🔄 Checking Rhythm-Sub for new releases...');
-  const discovered = await fetchRecentUrls();
+  let discovered = await fetchRecentUrls();
   console.log(`Found ${discovered.length} recent posts on Rhythm-Sub.`);
+
+  // REST inventory reconciliation (optional, application-password auth):
+  // the homepage only exposes ~3 recent pages, so episodes published while
+  // the pipeline was down/challenged fall out of view permanently. The full
+  // REST list closes that gap every run; selectNewUrls below re-fetches any
+  // discovered URL whose post file is missing. Non-fatal on failure —
+  // homepage discovery still works without RHYTHM_APP_PASSWORD.
+  if (process.env.RHYTHM_APP_PASSWORD) {
+    try {
+      const restPosts = await fetchRestInventory({ user: process.env.RHYTHM_USER, appPassword: process.env.RHYTHM_APP_PASSWORD });
+      const restUrls = restPosts.map((p) => p.link).filter(isPostUrl);
+      const merged = mergeDiscovery(discovered, restUrls);
+      console.log(`REST inventory: ${restPosts.length} posts, ${restUrls.length} dated permalinks (+${merged.length - discovered.length} beyond homepage view)`);
+      discovered = merged;
+    } catch (e) {
+      console.warn('Warning: REST inventory discovery failed (continuing with homepage discovery):', e.message);
+    }
+  }
 
   // Load existing URLs (parseInventory never throws; the catch also covers a
   // missing/unreadable file — same warning and merge-never-shrink policy).
