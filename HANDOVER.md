@@ -187,3 +187,14 @@ curl.exe -sS "https://rhythm-sub.pages.dev/" -o "$env:TEMP\h.html"; [System.IO.F
 ## 11. أرقام نهائية
 
 1027 منشوراً مسحوباً → 425 سلسلة → 440 صفحة منشورة → 2152 صورة WebP فريدة (889MB→115MB؛ 2161 مدخل manifest، و9 صور متطابقة اندمجت تلقائياً بفضل content-hash) → 72 سلسلة مرتبطة → ثابت كامل، JS مشترك 103KB + فهرس بحث immutable ‏149KB. (قياس 2026-11-19 بعد الجولة الرابعة؛ الأرقام القديمة 992/426/437 سبقت إعادة سحب أكتوبر.)
+
+## ملحق 2026-11-19 — تنظيف التاريخ بـBFG (الجولة الرابعة، البند السادس)
+
+- **نفّذ تنظيف التاريخ بـBFG 1.14.0** بموافقة صريحة من المالك على force-push:
+  1. العمل الجديد التزم ودُفع دفعاً عادياً أولاً (83b9b91) — CI أخضر على GitHub (اختبارات + typecheck + lint + بناء + بوابتا CSS والأصول).
+  2. `git clone --mirror` من GitHub ثم `java -jar bfg.jar --replace-text expressions.txt` — الـliteralان القديمان (كانا fallbacks في login.mjs وauto-sync.yml ونصاً في HANDOVER.md عبر commits قديمة) استُبدلا بـ`***REMOVED***`: ‏6 blobs في 3 ملفات، 102 كائنات، 56 commit أعيدت كتابتها.
+  3. `git reflog expire --expire=now --all && git gc --prune=now --aggressive`.
+  4. **تحقق قبل الدفع:** `git log --all -S` لكل literal = **صفر ظهور**؛ شجرة HEAD **مطابقة بايت-ببايت** لشجرة ما قبل التنظيف (`8010d2b9…`)؛ فرعا main وsync-data محفوظان.
+  5. force-push للتاريخ المنظّف (main → `8c139c3`)، ثم `git fetch origin && git reset --hard origin/main` محلياً — نفس الشجرة، تاريخ جديد، وصفر ظهور متبقٍ بعد الـreset.
+- **النتيجة:** الـcredential الميت أُزيل من التاريخ المنشور نهائياً. الخطر كان ميتاً أصلاً بتدوير المالك للكلمة (2026-11-19). النسخ القديمة/Forks قد تحتفظ بالـcommits القديمة — طلب purge من دعم GitHub ممكن لكن بلا قيمة عملية لـcredential ميت.
+- **دروس عملية:** `clone --mirror` يضبط `remote.origin.mirror=true` — أي refspec صريح بعده يفشل بـ`fatal: --mirror can't be combined with refspecs` (الحل: `git -c remote.origin.mirror=false push … <refspec>`). الدفع الكبير (~150MB) يتجاوز مهلة الأداة — شغّله background مع `--progress` في ملف log. وCSP hashes لازم تتحقق بمتصفح حقيقي: hash بلا اقتباس مفرد = مصدر باطل يحجب كل السكربتات بينما الفحص النصي ينجح.
