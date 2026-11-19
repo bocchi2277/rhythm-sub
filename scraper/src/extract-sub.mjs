@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { safeJoin } from './util.mjs';
+import { safeJoin, hostIs, urlPathEndsWith } from './util.mjs';
 
 const OUT_DIR = path.resolve('extracted_subtitles');
 
@@ -133,8 +133,11 @@ export async function extractSubtitles(rawUrl, outputName) {
     console.log(`🔗 Input URL: ${inputUrl}`);
     console.log(`======================================================\n`);
 
-    // 1. Download source files based on service
-    if (inputUrl.startsWith('magnet:') || inputUrl.includes('.torrent') || inputUrl.includes('nyaa.si')) {
+    // 1. Download source files based on service.
+    // Routing parses the URL host/path — substring matching would route
+    // https://evil.com/?x=drive.google.com to the wrong downloader (CodeQL
+    // js/incomplete-url-substring-sanitization, fixed for the whole class).
+    if (inputUrl.startsWith('magnet:') || urlPathEndsWith(inputUrl, '.torrent') || hostIs(inputUrl, 'nyaa.si')) {
       console.log('📥 Downloading via BitTorrent (aria2c)...');
       const ariaArgs = [
         '--seed-time=0',
@@ -149,17 +152,17 @@ export async function extractSubtitles(rawUrl, outputName) {
         inputUrl
       ];
       run('aria2c', ariaArgs);
-    } else if (inputUrl.includes('drive.google.com')) {
+    } else if (hostIs(inputUrl, 'drive.google.com')) {
       console.log('📥 Downloading from Google Drive (gdown)...');
       const gdownArgs = [inputUrl, '-O', `${workDir}/`, '--fuzzy'];
       if (inputUrl.includes('/folders/')) gdownArgs.push('--folder');
       run('gdown', gdownArgs);
-    } else if (inputUrl.includes('mediafire.com')) {
+    } else if (hostIs(inputUrl, 'mediafire.com')) {
       console.log('📥 Resolving and downloading from MediaFire...');
       const directMf = await resolveMediafireDirectUrl(inputUrl);
       console.log(`Direct MediaFire link: ${directMf}`);
       run('aria2c', ['--dir=' + workDir, '--file-allocation=none', '--summary-interval=10', directMf]);
-    } else if (inputUrl.includes('mega.nz')) {
+    } else if (hostIs(inputUrl, 'mega.nz')) {
       console.log('📥 Downloading from MEGA...');
       try {
         run('megatools', ['dl', '--path', workDir, inputUrl]);

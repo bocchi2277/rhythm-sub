@@ -130,6 +130,27 @@ export function isAllowedImageHost(url) {
   }
 }
 
+// Exact-host (or subdomain) match for routing scraped URLs to the right
+// downloader. A substring check like url.includes('drive.google.com') also
+// matches https://evil.com/?x=drive.google.com — CodeQL flags that as
+// js/incomplete-url-substring-sanitization, and rightly so.
+export function hostIs(u, dom) {
+  try {
+    const h = new URL(u).hostname.toLowerCase();
+    return h === dom || h.endsWith('.' + dom);
+  } catch {
+    return false;
+  }
+}
+
+export function urlPathEndsWith(u, suffix) {
+  try {
+    return new URL(u).pathname.toLowerCase().endsWith(suffix);
+  } catch {
+    return false;
+  }
+}
+
 // Fetch an image with SSRF-hardened redirect handling.
 //
 // `fetch` follows redirects by default, so an allowlisted URL that 30xes to

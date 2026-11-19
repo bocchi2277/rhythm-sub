@@ -9,11 +9,22 @@ const MAP_FILE = path.join(DATA, 'image_map.json');
 const series = JSON.parse(fs.readFileSync(path.join(DATA, 'series.json'), 'utf8'));
 const map = JSON.parse(fs.readFileSync(MAP_FILE, 'utf8'));
 
+// Hostname parse, not substring: 'rhythm-sub.com' inside another host's
+// query string must not pull that URL into the verification set (CodeQL
+// js/incomplete-url-substring-sanitization).
+const isSourceUrl = (u) => {
+  try {
+    const h = new URL(u).hostname.toLowerCase();
+    return h === 'rhythm-sub.com' || h.endsWith('.rhythm-sub.com');
+  } catch {
+    return false;
+  }
+};
 const urls = new Set();
 for (const s of series) {
-  if (s.cover?.includes('rhythm-sub.com')) urls.add(s.cover);
+  if (typeof s.cover === 'string' && isSourceUrl(s.cover)) urls.add(s.cover);
   for (const e of s.episodes) {
-    for (const im of e.contentImages ?? []) if (im.includes('rhythm-sub.com')) urls.add(im);
+    for (const im of e.contentImages ?? []) if (isSourceUrl(im)) urls.add(im);
   }
 }
 
