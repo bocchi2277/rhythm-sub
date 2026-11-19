@@ -40,6 +40,77 @@ export function extractUrls(html) {
   return [...new Set((html.match(POST_RE) ?? []).map((u) => u.replace(/\/+$/, '')))];
 }
 
+// ── Pure decision helpers ─────────────────────────────────────────────────
+// Extracted verbatim from the orchestrator so the inventory/safety policies
+// are unit-testable without network or git (test/sync-decisions.test.mjs).
+// syncNewReleases below keeps ALL I/O (fetch, fs, execFileSync) and logging.
+
+/** Parse post_urls.json content. Never throws: a corrupt or non-array
+ *  inventory is reported as unreadable so the caller can apply the
+ *  merge-never-shrink policy instead of crashing or truncating. */
+export function parseInventory(raw) {
+  try {
+    const urls = JSON.parse(raw);
+    if (!Array.isArray(urls)) throw new Error('post_urls.json is not an array');
+    return { urls, readable: true, error: null };
+  } catch (e) {
+    return { urls: [], readable: false, error: e.message };
+  }
+}
+
+/** Fail loudly (mirrors crawl.mjs): a 200 response with zero links usually
+ *  means the upstream served a bot-challenge page to this IP. Returning an
+ *  empty set would make sync log "all up to date" and exit GREEN in CI,
+ *  hiding a dead pipeline. */
+export function assertDiscovered(urls) {
+  if (urls.length === 0) {
+    throw new Error(
+      'No post URLs discovered on any page or the RSS feed. A 200 response with zero links usually means a bot-challenge page (the saved cookie authenticates WordPress but does not satisfy a Cloudflare challenge). Refusing to report a healthy no-op.'
+    );
+  }
+}
+
+/** A discovered URL is new when it is absent from the inventory OR its post
+ *  file is missing locally (re-fetch repairs a partial POSTS_DIR). postExists
+ *  is injected so the policy is testable without touching the filesystem. */
+export function selectNewUrls(discovered, existingUrls, postExists) {
+  const existingSet = new Set(existingUrls);
+  return discovered.filter((u) => !existingSet.has(u) || !postExists(slugFromUrl(u)));
+}
+
+/** Merge-never-shrink (same policy as crawl.mjs): when the inventory was
+ *  unreadable, the caller's set holds ONLY this run's ~3 pages + feed
+ *  discovery; writing it would silently truncate 1000+ URLs. */
+export function planInventoryWrite(existingSet, inventoryReadable) {
+  if (!inventoryReadable) return { write: false, list: null };
+  return { write: true, list: [...existingSet].sort() };
+}
+
+/** Never rebuild from a partial POSTS_DIR (e.g. CI run where the sync-data
+ *  snapshot failed to restore, or a run where some fetches failed).
+ *  Rebuilding from fewer files than known URLs would silently DROP posts
+ *  from series.json. Fail loudly instead — the next run retries. */
+export function assertPostsComplete(postFiles, expectedPosts) {
+  if (postFiles < expectedPosts) {
+    throw new Error(
+      `Refusing to rebuild: ${postFiles} post files but ${expectedPosts} known URLs. ` +
+        `Restore data/posts from the sync-data branch snapshot (or run sync locally with full history) instead of wiping series.json.`
+    );
+  }
+}
+
+/** Commit message from scraped post titles — untrusted input, but it is only
+ *  ever passed as an argv element via execFileSync, never through a shell. */
+export function buildCommitMsg(newTitles) {
+  const cleanTitles = newTitles
+    .map((t) => String(t).replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  return (
+    `Sync new release: ${cleanTitles.slice(0, 3).join(', ')}` +
+    `${cleanTitles.length > 3 ? ` (+${cleanTitles.length - 3} more)` : ''}`
+  );
+}
+
 // When auth is delegated to an injected cookie, a redirect to wp-login means
 // the cookie is dead — reauthOrThrow() (login.mjs) surfaces the actionable
 // "refresh RHYTHM_COOKIE" message instead of a doomed forced login.
@@ -70,15 +141,7 @@ async function fetchRecentUrls() {
       console.warn(`Warning: failed to fetch ${target}:`, e.message);
     }
   }
-  if (urls.size === 0) {
-    // Fail loudly (mirrors crawl.mjs): a 200 response with zero links usually
-    // means the upstream served a bot-challenge page to this IP. Returning an
-    // empty set would make sync log "all up to date" and exit GREEN in CI,
-    // hiding a dead pipeline.
-    throw new Error(
-      'No post URLs discovered on any page or the RSS feed. A 200 response with zero links usually means a bot-challenge page (the saved cookie authenticates WordPress but does not satisfy a Cloudflare challenge). Refusing to report a healthy no-op.'
-    );
-  }
+  assertDiscovered([...urls]);
 
   // 2. Fetch RSS feed as backup
   try {
@@ -179,23 +242,23 @@ export async function syncNewReleases(options = {}) {
   const discovered = await fetchRecentUrls();
   console.log(`Found ${discovered.length} recent posts on Rhythm-Sub.`);
 
-  // Load existing URLs
+  // Load existing URLs (parseInventory never throws; the catch also covers a
+  // missing/unreadable file — same warning and merge-never-shrink policy).
   let existingUrls = [];
   let inventoryReadable = true;
   try {
-    existingUrls = JSON.parse(fs.readFileSync(URLS_FILE, 'utf8'));
-    if (!Array.isArray(existingUrls)) throw new Error('post_urls.json is not an array');
+    const inv = parseInventory(fs.readFileSync(URLS_FILE, 'utf8'));
+    if (!inv.readable) throw new Error(inv.error);
+    existingUrls = inv.urls;
   } catch (e) {
     inventoryReadable = false;
     console.warn(`⚠️ Could not read ${URLS_FILE} (${e.message}); every discovered post will be treated as new.`);
   }
 
   const existingSet = new Set(existingUrls);
-  const newUrls = discovered.filter((u) => {
-    const slug = slugFromUrl(u);
-    const postFile = path.join(POSTS_DIR, `${slug}.json`);
-    return !existingSet.has(u) || !fs.existsSync(postFile);
-  });
+  const newUrls = selectNewUrls(discovered, existingUrls, (slug) =>
+    fs.existsSync(path.join(POSTS_DIR, `${slug}.json`))
+  );
 
   if (newUrls.length === 0) {
     console.log('✅ All releases are up to date! No new episodes found.');
@@ -247,12 +310,10 @@ export async function syncNewReleases(options = {}) {
     await sleepBetween(400);
   }
 
-  // Update post_urls.json — merge-never-shrink (same policy as crawl.mjs):
-  // when the inventory was unreadable, existingSet holds ONLY the ~3 pages +
-  // feed discovered this run; writing it would silently truncate 1000+ URLs.
-  if (inventoryReadable) {
-    const updatedList = [...existingSet].sort();
-    writeJsonAtomic(URLS_FILE, updatedList);
+  // Update post_urls.json — merge-never-shrink (policy in planInventoryWrite).
+  const plan = planInventoryWrite(existingSet, inventoryReadable);
+  if (plan.write) {
+    writeJsonAtomic(URLS_FILE, plan.list);
   } else {
     console.warn(`⚠️ Leaving ${URLS_FILE} untouched: inventory was unreadable and this run's discovery set is partial.`);
   }
@@ -268,18 +329,10 @@ export async function syncNewReleases(options = {}) {
     writeJsonAtomic(MANIFEST, manifest);
   }
 
-  // Guard: never rebuild from a partial POSTS_DIR (e.g. CI run where the
-  // sync-data snapshot failed to restore, or a run where some fetches
-  // failed). Rebuilding from fewer files than known URLs would silently
-  // DROP posts from series.json. Fail loudly instead — the next run retries.
+  // Guard: never rebuild from a partial POSTS_DIR (policy in assertPostsComplete).
   const expectedPosts = [...existingSet].length;
   const postFiles = fs.readdirSync(POSTS_DIR).filter((f) => f.endsWith('.json')).length;
-  if (postFiles < expectedPosts) {
-    throw new Error(
-      `Refusing to rebuild: ${postFiles} post files but ${expectedPosts} known URLs. ` +
-        `Restore data/posts from the sync-data branch snapshot (or run sync locally with full history) instead of wiping series.json.`
-    );
-  }
+  assertPostsComplete(postFiles, expectedPosts);
 
   // Rebuild data model (series.json)
   console.log('\n🏗️ Rebuilding series & episode model...');
@@ -300,14 +353,10 @@ export async function syncNewReleases(options = {}) {
   // referencing posts that were never archived.
   if (autoPush || commitOnly) {
     console.log(autoPush ? '\n📤 Committing & pushing changes to GitHub...' : '\n💾 Committing changes (no push)...');
-    // commitMsg is built from scraped post titles — untrusted input. It is passed
-    // as an argv element via execFileSync, so it can never reach a shell.
-    const cleanTitles = newTitles
-      .map((t) => String(t).replace(/\s+/g, ' ').trim())
-      .filter(Boolean);
-    const commitMsg =
-      `Sync new release: ${cleanTitles.slice(0, 3).join(', ')}` +
-      `${cleanTitles.length > 3 ? ` (+${cleanTitles.length - 3} more)` : ''}`;
+    // commitMsg is built from scraped post titles — untrusted input, but
+    // buildCommitMsg's result is only ever passed as an argv element via
+    // execFileSync, so it can never reach a shell.
+    const commitMsg = buildCommitMsg(newTitles);
     const repoRoot = path.resolve(DATA, '..');
     try {
       execFileSync('git', ['add', '-A', '--', ...COMMIT_PATHS], { cwd: repoRoot, stdio: 'inherit' });

@@ -202,6 +202,20 @@ function main() {
   }
   console.log(`loaded ${posts.length} posts`);
 
+  const seriesList = assembleSeries(posts);
+
+  writeJsonAtomic(path.join(DATA, 'series.json'), seriesList, 0);
+
+  const { markdown, totalEpisodes, uniqueImages } = buildReport(seriesList, posts.length, files.length, new Date().toISOString());
+  writeFileAtomic(path.join(DATA, 'report.md'), markdown);
+  console.log(`series: ${seriesList.length} | episodes: ${totalEpisodes} | images: ${uniqueImages}`);
+  console.log(markdown);
+}
+
+// Pure assembly pipeline: posts in → series out (no fs, no clock). Extracted
+// verbatim from main() so the grouping/slug/related/cover rules are unit-testable
+// (test/build-model-assembly.test.mjs). main() keeps all I/O.
+export function assembleSeries(posts) {
   posts.sort((a, b) => String(a.publishedAt ?? '').localeCompare(String(b.publishedAt ?? '')));
 
   const groups = groupPosts(posts);
@@ -339,9 +353,13 @@ function main() {
   }
 
   seriesList.sort((a, b) => String(b.lastReleaseAt ?? '').localeCompare(String(a.lastReleaseAt ?? '')));
+  return seriesList;
+}
 
-  writeJsonAtomic(path.join(DATA, 'series.json'), seriesList, 0);
-
+// Pure report builder. The timestamp is injected (main() passes the real
+// clock) so tests are deterministic. Returns the markdown plus the counters
+// main() logs.
+export function buildReport(seriesList, postsLoaded, filesTotal, generatedAt) {
   const totalEpisodes = seriesList.reduce((n, s) => n + s.episodes.length, 0);
   const withCover = seriesList.filter((s) => s.cover).length;
   const withSynopsis = seriesList.filter((s) => s.synopsis).length;
@@ -358,10 +376,10 @@ function main() {
   }
 
   const report = `# Rhythm-Sub scrape & model report
-Generated: ${new Date().toISOString()}
+Generated: ${generatedAt}
 
 ## Totals
-- Source posts loaded: **${posts.length} / ${files.length}** (unusable files fail the build)
+- Source posts loaded: **${postsLoaded} / ${filesTotal}** (unusable files fail the build)
 - Series entities: **${seriesList.length}**
 - Episode/release entries: **${totalEpisodes}**
 - Series with >1 release: ${multiEp}
@@ -388,9 +406,7 @@ ${seriesList
   .join('\n')}
 `;
 
-  writeFileAtomic(path.join(DATA, 'report.md'), report);
-  console.log(`series: ${seriesList.length} | episodes: ${totalEpisodes} | images: ${allImageUrls.size}`);
-  console.log(report);
+  return { markdown: report, totalEpisodes, uniqueImages: allImageUrls.size };
 }
 
 // CLI direct run — importing this module must not rebuild the model as a side effect.
