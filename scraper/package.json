@@ -4,6 +4,7 @@
   "description": "",
   "scripts": {
     "test": "node src/syntax-check.mjs && node --test \"test/*.test.mjs\"",
+    "test:coverage": "node src/syntax-check.mjs && node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage.lcov --test-reporter=spec --test-reporter-destination=stdout \"test/*.test.mjs\" && node scripts/check-coverage.mjs coverage.lcov",
     "login": "node src/login.mjs",
     "crawl": "node src/crawl.mjs",
     "scrape": "node src/scrape.mjs",

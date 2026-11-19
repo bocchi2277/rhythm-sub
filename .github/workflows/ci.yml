@@ -45,6 +45,15 @@ jobs:
       - name: Scraper tests (syntax + unit)
         run: cd scraper && npm test
 
+      # Blocking gate: production-code coverage must not regress. Measures
+      # scraper/src + shared/rules.mjs + the site/lib modules loaded by tests
+      # (Node's coverage does not measure test files). Thresholds are a ratchet
+      # set below the 2026-11-19 baseline (72.5/81.1/79.7) — raise them as
+      # coverage grows, never lower them to pass. Plain lcov parser because CI
+      # Node 22 lacks the newer --test-coverage-* threshold flags.
+      - name: Coverage gate (scraper + shared + site lib)
+        run: cd scraper && npm run test:coverage
+
       - name: Typecheck
         run: cd site && npm run typecheck
 

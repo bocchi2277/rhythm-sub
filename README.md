@@ -73,6 +73,7 @@ npm start           # معاينة out/ على المنفذ 3111
 ```bash
 cd scraper && npm install
 npm test                      # فحص الصياغة + اختبارات الوحدة (بوابة CI)
+npm run test:coverage         # بوابة التغطية: 70% أسطر / 78% فروع / 75% دوال (بوابة CI)
 node src/login.mjs            # تسجيل الدخول (يقرأ scraper/.env)
 node src/crawl.mjs            # حصر كل روابط المنشورات → data/post_urls.json
 node src/scrape.mjs           # سحب تفاصيل المنشورات (يستأنف بوجود ملفات JSON)
@@ -85,7 +86,7 @@ npm run optimize:force        # إعادة تحسين كل الصور + تنظي
 ## المزامنة التلقائية والجودة
 
 - `.github/workflows/auto-sync.yml` — سحب دوري للإصدارات الجديدة (cron `*/30`؛ القياس الفعلي على GitHub 4–6 تشغيلات/يوم لا 48): التزام محلي فقط (`--commit-only`) ثم نشر لقطة posts على فرع `sync-data` والتحقق منها **قبل** دفع main (فشل اللقطة يمنع دفع main). اللقطة تُفحص قبل الاستعمال (أسماء مطلقة/هاربة، symlink/hardlink، أعضاء خارج `posts/`، وJSON تالف لكل ملف) ولا تُنشر إذا كانت أصغر من المستعاد.
-- `.github/workflows/ci.yml` — بوابة جودة على main وكل PR: اختبارات scraper (`npm test`: صياغة + وحدات) + typecheck + lint (ESLint) + بناء كامل + بوابة تغطية CSS (`check-css-coverage.py`) + بوابة "لا أصول من طرف ثالث" (`npm run check:assets`)، مع `concurrency` لإلغاء التشغيل المتقادم.
+- `.github/workflows/ci.yml` — بوابة جودة على main وكل PR: اختبارات scraper (`npm test`: صياغة + وحدات) + بوابة التغطية (`npm run test:coverage`: ‏70% أسطر / 78% فروع / 75% دوال، رatchet بيعلى مع النمو) + typecheck + lint (ESLint) + بناء كامل + بوابة تغطية CSS (`check-css-coverage.py`) + بوابة "لا أصول من طرف ثالث" (`npm run check:assets`)، مع `concurrency` لإلغاء التشغيل المتقادم.
 - الأسرار المطلوبة في GitHub (Settings → Secrets and variables → Actions): `RHYTHM_USER` و`RHYTHM_PASS` (إلزاميان)، و`RHYTHM_SESSION_KEY` اختياري — يفعّل كاش جلسة مشفّراً (`scraper/.session.enc` عبر AES-256-GCM + PBKDF2 بـ600000 تكرار، `scraper/src/session-crypto.mjs`) في auto-sync؛ بدونه يسجّل الدخول من جديد كل تشغيل. توليد المفتاح: `openssl rand -base64 32`. **إذا لم يُضبط، لا يُحفظ أي كاش جلسة إطلاقاً** (الخطوة تتخطى التشفير والحفظ — لا تخزين نصي أبداً).
   - الأسرار **محجوبة على مستوى الخطوة** (step-level `env`) وليست على مستوى الـjob: `npm ci` لا يحتاجها ولا يجب أن يراها.
   - التشفير الآن **AES-256-GCM (AEAD)** عبر `node:crypto` (`scraper/src/session-crypto.mjs`) — يستبدل AES-256-CBC القديم غير المصادَق عليه؛ الكاشات القديمة بصيغة CBC تُفك للقراءة فقط ثم يُعاد تشفيرها بـGCM تلقائياً. ملاحظة متبقية: على الريبو العام أي fork PR يستطيع **قراءة** مدخلات الكاش (توثيق GitHub) — الحماية هي التشفير بالمفتاح السري، وليس إخفاء الـblob نفسه.
